@@ -1,0 +1,3427 @@
+/* =====================================================================================================================
+   Menus « Pile » — choix de Femz du 19/11/2026 (maquettes : artifact « Menus CTRL+Z », direction A).
+   Une colonne de mots à gauche en Determination ; une barre jaune pleine, partie du bord de l'écran, suit le choix
+   (le premier bouton la porte tant que la souris n'est sur aucun) ; AUCUNE touche affichée sur les boutons des menus ;
+   pas de cadres biseautés. En partie : Échap = ce menu, Tab = l'inventaire (la fiche de l'agent, 3 colonnes) ; aucun
+   indice de touche au HUD (retiré par Femz le 19/11).
+   Feuille chargée APRÈS ui.css (index.html) : chaque règle est préfixée :root[data-sr-theme='carte-mere'] pour passer
+   devant celles du thème sans !important.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] {
+  /* « planche système » (outils/fond_systeme.py, 320 × 180, demande de Femz du 19/11) : le fond OPAQUE des menus —
+     plus la partie assombrie derrière, qui gênait la lecture */
+  --pile-planche: url('../assets/ui/fond-systeme.png') center / cover no-repeat #060c09;
+  --pile-jaune: #f4f050;
+  --pile-nuit: #070b10;
+  --pile-texte: #e9f0ec;
+  --pile-gris: #8ea69a;
+  --pile-doux: #c9d6cf;
+  --pile-vert: #74e09a;
+  --pile-filet: rgba(233, 240, 236, 0.14);
+  --pile-gauche: 4rem; /* marge gauche commune : logo, liste, titres */
+}
+
+/* ----- le bouton « Pile » : un mot, une barre jaune derrière quand il est choisi -------------------------------------- */
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn {
+  position: relative;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 3.2rem;
+  margin: 0;
+  padding: 0 1.5rem 0 var(--pile-gauche);
+  font: 400 2.05rem/1 var(--sr-mono);
+  letter-spacing: 0.03em;
+  text-transform: none;
+  color: var(--pile-texte);
+  background: none;
+  border: 0;
+  box-shadow: none;
+  text-shadow: 0 0.1rem 0.5rem rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  transition: color 0.12s;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--pile-jaune);
+  border: 0;
+  border-image: none;
+  box-shadow: none;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.14s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn::after,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn::after,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn .sr-btn-label,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn .sr-btn-label {
+  position: relative;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+/* le choix : la souris dessus, ou le premier bouton tant que la souris n'est sur aucun */
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn:hover,
+:root[data-sr-theme='carte-mere'] .sr-title-boutons:not(:hover) > .sr-btn.sr-primary,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel:not(:has(.sr-btn:hover)) .sr-btn-col > .sr-btn.sr-primary,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn:hover,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn:hover,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn.sr-on {
+  color: var(--pile-nuit);
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn:hover::before,
+:root[data-sr-theme='carte-mere'] .sr-title-boutons:not(:hover) > .sr-btn.sr-primary::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel:not(:has(.sr-btn:hover)) .sr-btn-col > .sr-btn.sr-primary::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn:hover::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn:hover::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn.sr-on::before {
+  transform: scaleX(1);
+}
+
+/* « Chargement… » : Jouer attend les modèles */
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn.sr-attente {
+  color: var(--pile-gris);
+}
+
+/* =====================================================================================================================
+   ÉCRAN TITRE
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-title {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0;
+}
+
+/* voile léger à gauche : juste ce qu'il faut pour lire la liste (Femz : « baisse le vignettage à gauche ») */
+:root[data-sr-theme='carte-mere'] .sr-title::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(7, 11, 16, 0.55) 0%, rgba(7, 11, 16, 0.3) 22%, rgba(7, 11, 16, 0) 38%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title > .sr-logo {
+  position: absolute;
+  left: var(--pile-gauche);
+  top: 3.2rem;
+  margin: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title > .sr-logo img {
+  width: 24rem;
+  max-width: 34vw;
+}
+
+/* le pied du titre n'est plus une colonne centrée : ses enfants se placent dans l'écran */
+:root[data-sr-theme='carte-mere'] .sr-title > .sr-title-foot {
+  display: contents;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-title-boutons {
+  position: absolute;
+  left: 0;
+  top: 15.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 26rem;
+  animation: sr-rise var(--sr-screen-s) ease-out backwards;
+}
+
+/* Quitter : un ton plus bas (il ferme le jeu) */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-title-boutons > .sr-title-quitter {
+  height: 2.6rem;
+  font-size: 1.5rem;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-title-boutons > .sr-title-quitter:hover {
+  color: var(--pile-nuit);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-title-status {
+  position: absolute;
+  left: var(--pile-gauche);
+  top: 30rem;
+  max-width: 24rem;
+  margin: 0;
+  text-align: left;
+}
+
+/* pseudo : en haut à droite */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-pseudo {
+  position: absolute;
+  right: 1.5rem;
+  top: 1.5rem;
+  margin: 0;
+}
+
+/* record en bas à droite : un libellé, une vague ; rien sans record ; l'en-tête n'est plus un bouton */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos {
+  right: 1.75rem;
+  bottom: 1.6rem;
+  align-items: flex-end;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos::before,
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-sans-record:not(.sr-open) {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-head {
+  pointer-events: none;
+  justify-content: flex-end;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-head::before,
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-head::after,
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-chevron {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-record {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-label {
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-doux);
+  text-shadow: 0 0.1rem 0.4rem rgba(0, 0, 0, 0.9);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos-record .sr-num {
+  font: 400 1.9rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+  text-shadow: 0 0.1rem 0.5rem rgba(0, 0, 0, 0.9);
+}
+
+/* « Réglages » ouvert : le panneau (record détaillé, règle, réglages) sur fond sombre, à droite de la liste */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open {
+  left: 28rem;
+  right: auto;
+  top: 15.5rem;
+  bottom: auto;
+  width: 26rem;
+  align-items: stretch;
+  padding: 1.4rem 1.5rem;
+  background: rgba(7, 11, 16, 0.88);
+  box-shadow: inset 0 0 0 1px var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open .sr-infos-head {
+  justify-content: flex-start;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open .sr-infos-record {
+  align-items: flex-start;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open.sr-sans-record .sr-infos-head {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-title-reglages[aria-expanded='true'] {
+  color: var(--pile-nuit);
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-title-reglages[aria-expanded='true']::before {
+  transform: scaleX(1);
+  background: var(--pile-doux);
+}
+
+/* journal des nouveautés : une ligne en bas à gauche ; un clic le déplie vers le haut */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes {
+  left: var(--pile-gauche);
+  top: auto;
+  bottom: 1.6rem;
+  width: auto;
+  max-width: 34rem;
+  /* (20/11) déplié, il restait sous la liste Jouer / Noyau / Réglages (bas ≈ 56 % de la hauteur) : il la recouvrait
+     à 62vh (e4-cycles-patchnotes-succes) ; la liste des versions défile dedans */
+  max-height: calc(43vh - 2.6rem);
+  flex-direction: column-reverse;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes.sr-ouvert .sr-notes-corps {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes.sr-ouvert {
+  width: 30rem;
+  background: rgba(7, 11, 16, 0.92);
+  box-shadow: inset 0 0 0 1px var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-tete {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes.sr-ouvert .sr-notes-tete {
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-id {
+  display: flex;
+  margin: 0;
+}
+
+/* l'étiquette « PATCHNOTE » : éteinte (contour gris) une fois la version lue, verte tant qu'elle ne l'est pas */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-titre {
+  margin: 0;
+  padding: 0.25rem 0.4rem;
+  font: 400 0.75rem/1 var(--sr-mono); /* 12 px en 1280 × 720 : plancher de lisibilité (ui.test) */
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(142, 166, 154, 0.5);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes.sr-non-lu .sr-notes-titre {
+  color: var(--pile-nuit);
+  background: var(--pile-vert);
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-pastille {
+  display: none !important; /* l'étiquette PATCHNOTE dit déjà « pas lu » (peindre() écrit display sur la pastille) */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-ligne {
+  font: 700 0.85rem/1.2 var(--sr-text);
+  color: var(--pile-doux);
+  text-shadow: 0 0.1rem 0.4rem rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-tete:hover .sr-notes-ligne {
+  color: var(--pile-texte);
+}
+
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-notes-chev {
+  color: var(--pile-gris);
+}
+
+/* =====================================================================================================================
+   PAUSE — MENU (Échap) : la liste à gauche, la scène figée derrière
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-pause {
+  background: var(--pile-planche);
+  image-rendering: pixelated;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause.sr-pause-menu-on {
+  display: block;
+  padding: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 32rem;
+  max-width: none;
+  margin: 0;
+  padding: 4.5rem 0 2.5rem;
+  background: none;
+  box-shadow: none;
+  border: 0;
+  animation: sr-rise var(--sr-screen-s) ease-out backwards;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > h2 {
+  margin: 0;
+  padding-left: var(--pile-gauche);
+  font: 400 3.4rem/1 var(--sr-mono);
+  letter-spacing: 0.03em;
+  text-transform: none;
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > h2::before {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > .sr-pause-fige {
+  margin: 0.4rem 0 1.8rem;
+  padding-left: var(--pile-gauche);
+  font: 700 0.85rem/1.4 var(--sr-text);
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > .sr-rule {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  margin: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn .sr-btn-label::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn .sr-btn-label {
+  margin: 0;
+  padding: 0;
+}
+
+/* Quitter la partie : un ton plus bas, poussé en bas de la liste */
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > .sr-pause-fin {
+  margin-top: 0.35rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-pause-quitter {
+  height: 2.6rem;
+  font-size: 1.5rem;
+  color: var(--pile-gris);
+}
+
+/* Paramètres / Touches ouverts : leur panneau à droite de la liste */
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > .sr-pli {
+  position: absolute;
+  left: 32rem;
+  top: 4.5rem;
+  width: 30rem;
+  max-height: calc(100% - 7rem);
+  overflow: auto;
+  padding: 1.4rem 1.5rem;
+  background: rgba(7, 11, 16, 0.92);
+  box-shadow: inset 0 0 0 1px var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel.sr-touches-on > .sr-pli.sr-pli-touches {
+  width: min(52rem, calc(100vw - 34rem));
+}
+
+/* =====================================================================================================================
+   PAUSE — FICHE DE L'AGENT (Tab) : trois colonnes sans cadre — caractéristiques | l'agent et ses armes | améliorations,
+   objets et détail de la case cliquée ; en bas « Fermer l'inventaire » et « Menu »
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-pause:not(.sr-pause-menu-on) {
+  display: block;
+  padding: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  max-width: none;
+  display: block;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche {
+  position: absolute;
+  left: var(--pile-gauche);
+  right: var(--pile-gauche);
+  top: 5.2rem; /* sous la puce et le chrono du HUD, restés à l'écran */
+  bottom: 5.5rem;
+  width: auto;
+  max-width: none;
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr) 21rem;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'titre titre titre'
+    'niv niv niv'
+    'carac corps bonus'
+    'carac corps objets'
+    'carac corps reste';
+  column-gap: 3rem;
+  row-gap: 0.6rem;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  border: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche::after {
+  content: none;
+}
+
+/* en-tête : le type d'agent en petit, le pseudo en grand, le niveau et sa barre */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > h2 {
+  grid-area: titre;
+  margin: 0;
+  font: 400 2.6rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > h2::before {
+  content: attr(data-type);
+  margin: 0 0 0.45rem;
+  padding: 0;
+  border: 0;
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-niv {
+  grid-area: niv;
+  width: 26rem;
+  margin-bottom: 1.4rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-carac {
+  grid-area: 3 / 1 / 6 / 2;
+  position: static;
+  align-self: start;
+  width: auto;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-carac::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-carac::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-corps {
+  grid-area: 3 / 2 / 6 / 3;
+  align-self: center;
+  justify-self: center;
+  gap: 2rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-col {
+  gap: 0.9rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme {
+  width: 3.6rem;
+  height: 3.6rem;
+}
+
+/* l'agent en grand au centre, sans trame derrière */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait {
+  padding: 0;
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait img {
+  width: round(nearest, 12rem, 48px);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait.sr-3d .sr-fiche-3d {
+  width: 15rem;
+  height: 21rem;
+}
+
+/* titres des blocs de droite (« Améliorations », « Objets »), comme « Caractéristiques » */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-bonus::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets::before {
+  grid-column: 1 / -1;
+  display: block;
+  padding-bottom: 0.45rem;
+  font: 500 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cy-muted, #a9dcb6);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-bonus::before {
+  content: 'Améliorations';
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets::before {
+  content: 'Objets';
+  width: 100%;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets:not(:has(.sr-fiche-o:not(.sr-vide))) {
+  display: none;
+}
+
+/* colonne de droite : améliorations, objets, puis la fenêtre de la case cliquée */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-bonus,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-detail {
+  grid-column: 3;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-bonus {
+  grid-area: bonus;
+  align-self: start;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets {
+  grid-area: objets;
+  align-self: start;
+  margin-top: 1.4rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-detail {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  top: auto;
+  width: 21rem;
+}
+
+/* pied : « Fermer l'inventaire » et « Menu », en texte, sans cadre ni touche */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-pause-menu-pli {
+  position: absolute;
+  left: var(--pile-gauche);
+  right: var(--pile-gauche);
+  bottom: 1.6rem;
+  display: flex;
+  gap: 2.4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-pause-menu-pli > .sr-btn {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0.35rem 0;
+  font: 400 1rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-pause-menu-pli > .sr-btn::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-pause-menu-pli > .sr-btn::after,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-pause-menu-pli > .sr-menu-pli-btn .sr-btn-label::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-pause-menu-pli > .sr-btn:hover {
+  color: var(--pile-jaune);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-sr-theme='carte-mere'] .sr-title-boutons > .sr-btn::before,
+  :root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn::before {
+    transition: none;
+  }
+}
+
+/* =====================================================================================================================
+   NOYAU (src/ui-hub.js) — même langage : plus de grand cadre ni de pattes de circuit autour des blocs ; onglets en mots
+   soulignés ; agents en lignes, la barre jaune sur l'agent visé ; pied en mots (« Jouer · <agent> » en jaune).
+   Les grilles de Collection, Succès et Déblocages gardent leurs cases (elles groupent des infos).
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-hub {
+  background: var(--pile-planche); /* la planche système, opaque : la scène du titre ne se voit plus derrière */
+  image-rendering: pixelated;
+}
+
+/* la trame animée du Noyau ferait double emploi avec la planche */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fond {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-panneau {
+  background: none;
+  box-shadow: none;
+  border: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-panneau::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-panneau::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-carac::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-carac::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-chemin {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-titre h2 {
+  font: 400 2.6rem/1 var(--sr-mono);
+  letter-spacing: 0.03em;
+  color: var(--pile-texte);
+}
+
+/* onglets : des mots ; l'onglet ouvert souligné de vert, l'onglet visé au clavier souligné de jaune */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-onglet {
+  min-width: 0;
+  padding: 0.45rem 0 0.5rem;
+  margin-right: 1.6rem;
+  background: none;
+  box-shadow: none;
+  border: 0;
+  font: 400 0.95rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-onglet::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-onglet::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-onglet:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-onglet.sr-actif {
+  color: var(--pile-texte);
+  box-shadow: inset 0 -0.15rem 0 var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-onglet.sr-sel {
+  box-shadow: inset 0 -0.15rem 0 var(--pile-jaune);
+}
+
+/* les blocs du Noyau perdent leur cadre (caractéristiques, fiche de l'agent) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-carac,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche {
+  background: none;
+  box-shadow: none;
+  border: 0;
+}
+
+/* agents : des lignes ; la barre jaune sur l'agent visé (clavier) ou survolé, le texte passe en nuit */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard {
+  background: none;
+  box-shadow: none;
+  border: 0;
+  transition: background-color 0.12s;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard.sr-sel {
+  background: var(--pile-jaune);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard:hover *,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard.sr-sel * {
+  color: var(--pile-nuit);
+  text-shadow: none;
+}
+
+/* pied : « Retour » en gris, « Jouer · <agent> » en jaune, sans cadre ni touche */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-pied .sr-btn {
+  min-width: 0;
+  padding: 0.5rem 0;
+  background: none;
+  box-shadow: none;
+  font: 400 1.05rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-pied .sr-btn::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-pied .sr-btn::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-pied .sr-btn.sr-primary {
+  color: var(--pile-jaune);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-pied .sr-btn:hover {
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-pied .sr-btn.sr-primary:hover {
+  color: var(--pile-jaune);
+  text-decoration: underline;
+  text-underline-offset: 0.3rem;
+}
+
+/* =====================================================================================================================
+   INVENTAIRE v2 (Femz, 19/11 : « l'inventaire ressemble plus à un menu qu'à un vrai inventaire ») : des CASES. L'agent
+   entouré de ses 6 emplacements d'arme (vides compris, en pointillés), et à droite deux grilles de cases carrées —
+   améliorations (icône + n/5) et objets (icône + ×n, emplacements libres visibles). La case cliquée s'entoure de jaune
+   et son détail s'ouvre sous les grilles. Les caractéristiques restent à gauche, en texte, plus discrètes.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche {
+  grid-template-columns: 15rem minmax(0, 1fr) 25rem;
+}
+
+/* une case d'inventaire : carré, fond à peine teinté, filet ; pleine = filet plus clair ; vide = pointillés */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: auto;
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  background: var(--case-fond);
+  box-shadow: inset 0 0 0 1px var(--case-filet);
+}
+
+/* (20/11, Femz) fond PLEIN dans toutes les cases, vides comprises, une couleur par famille :
+   armes = gris foncé, améliorations = vert foncé, objets = le bleu des objets du HUD en jeu */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme {
+  --case-fond: #1c2420; /* un ton au-dessus du bloc gris de l'agent, pour que les cases vides s'y lisent */
+  --case-filet: rgba(233, 240, 236, 0.3);
+}
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b {
+  --case-fond: #0e3a20;
+  --case-filet: #2f8a52;
+}
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o {
+  --case-fond: #1d4fae;
+  --case-filet: #8fc0ff;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme {
+  width: 4.6rem;
+  box-shadow: inset 0 0 0 1px var(--case-filet), inset 0 -0.2rem 0 var(--wc, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme .sr-ic {
+  width: round(nearest, 2.4rem, 24px);
+  height: round(nearest, 2.4rem, 24px);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme.sr-vide,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b.sr-vide,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o.sr-vide {
+  display: grid;
+  background: var(--case-fond);
+  box-shadow: none; /* vide : même fond plein, sans filet ni liseré — la case pleine se détache par son filet */
+  outline: none;
+  opacity: 1; /* ui.css passait la case vide à 0,55 : le fond ne serait plus plein (la planche transparaîtrait) */
+}
+
+/* amélioration pas encore prise : seule l'icône s'efface, la case garde son vert plein */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b.sr-vide .sr-ic {
+  opacity: 0.4;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme.sr-vide .sr-ic,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o.sr-vide .sr-ic {
+  visibility: hidden;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-col {
+  gap: 0.8rem;
+}
+
+/* niveau d'une case (arme : chiffre ; amélioration : n/5 ; objet : ×n) dans le coin bas droit */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme-niv,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b .sr-num,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o-n {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.25rem;
+  font: 400 0.75rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b.sr-vide .sr-num {
+  color: var(--pile-gris);
+}
+
+/* grilles de droite : 5 cases par rangée, sans la ligne de texte des objets (le nom est dans le détail) */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-bonus,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets:not(:has(.sr-fiche-o:not(.sr-vide))) {
+  display: grid; /* les emplacements d'objets se voient même vides : c'est un inventaire */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b .sr-ic {
+  width: round(nearest, 1.9rem, 12px);
+  height: round(nearest, 1.9rem, 12px);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b.sr-vide .sr-ic {
+  opacity: 0.28;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o .sr-ic {
+  width: round(nearest, 1.9rem, 12px);
+  height: round(nearest, 1.9rem, 12px);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o-txt {
+  display: none;
+}
+
+/* la case ouverte (détail) : liseré jaune — le seul jaune de l'écran */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail-on,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche [data-detail]:hover {
+  box-shadow: inset 0 0 0 0.12rem var(--pile-jaune);
+}
+
+/* le détail de la case, sous les grilles, dans la colonne de droite */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-detail {
+  grid-area: reste;
+  position: static;
+  align-self: start;
+  width: auto;
+  margin-top: 1.4rem;
+}
+
+/* caractéristiques : plus discrètes (texte un ton plus bas) */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-carac {
+  opacity: 0.85;
+}
+
+/* (20/11, Femz : « la grille du perso est trop compressée vers le bas, ajoute un carré fond gris autour, plus d'espace
+   entre les armes pour que tout soit sur la même ligne ») : l'agent et ses six armes dans un bloc gris qui part de la
+   même ligne que « Caractéristiques » et « Améliorations » et finit avec la dernière caractéristique ; les armes
+   s'étalent sur toute la hauteur du bloc. Les rangées de droite ne s'étirent plus (la place restante va à une rangée
+   vide sous elles), sinon le bloc descendrait jusqu'au pied. */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche {
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'titre titre titre'
+    'niv niv niv'
+    'carac corps bonus'
+    'carac corps objets'
+    'carac corps reste'
+    '. . .';
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-corps {
+  grid-area: corps;
+  align-self: stretch;
+  justify-self: stretch;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem;
+  background: #0f1412;
+  box-shadow: inset 0 0 0 1px rgba(233, 240, 236, 0.08);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-corps > .sr-fiche-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-corps > .sr-fiche-portrait {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  min-width: 0;
+}
+
+/* l'agent un peu moins haut : le bloc finit avec la dernière caractéristique.
+   21/11 (captures de Femz : « les perso sont décentrés ») — la toile (13,5 rem) est plus large que la case du portrait,
+   serrée entre les deux colonnes de cases : collée à gauche, elle débordait toute à droite et l'agent tombait ≈ 75 px
+   (2560 px) à droite du milieu. Centrée sans repli (unsafe), elle déborde autant des deux côtés : l'agent est au milieu
+   des deux colonnes. Les cases (position: relative) restent au-dessus de la toile, au clic comme au survol. */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-corps .sr-fiche-3d {
+  justify-self: unsafe center;
+  width: 13.5rem;
+  height: 18.5rem;
+}
+
+/* (20/11, Femz : « les infos d'un item doivent apparaître au survol dans une box près du curseur, à un endroit adapté
+   selon où l'on est à l'écran, qui ne déborde pas du cadre ») : la boîte suit le curseur (ui.js, placerDetail) ; son
+   coin est sur le curseur, décalé d'1 rem, et elle s'ouvre vers le côté libre (sr-detail-g : à gauche ; sr-detail-h :
+   au-dessus). Bornée à moins d'une demi-largeur et d'une demi-hauteur d'écran moins les marges du cadre, elle ne sort
+   jamais. Elle ignore le pointeur (sinon elle volerait le survol de la case). */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche {
+  grid-template-columns: 18rem minmax(0, 1fr) 25rem;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur {
+  position: fixed;
+  z-index: 20;
+  right: auto;
+  bottom: auto;
+  width: min(22rem, calc(50vw - 5rem));
+  max-width: none;
+  max-height: 80vh;
+  margin: 0;
+  padding: 1rem 1.1rem;
+  gap: 0.55rem;
+  overflow: hidden;
+  background: #0f1412;
+  box-shadow: inset 0 0 0 1px rgba(233, 240, 236, 0.16), 0 0.5rem 1.5rem rgba(0, 0, 0, 0.55);
+  border: 0;
+  animation: none;
+  pointer-events: none;
+  /* vertical : la boîte glisse sur le curseur d'une part de sa hauteur égale à la position du curseur dans le cadre
+     (--py, 0 en haut du cadre, 1 en bas ; ui.js) — en haut elle descend, en bas elle monte, au milieu elle est
+     centrée. Bornée à 80 % de la hauteur, elle reste toujours entre 10 % et 90 % de l'écran : jamais coupée. */
+  transform: translate(1.25rem, calc(var(--py, 0) * -100%));
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur.sr-detail-g {
+  transform: translate(calc(-100% - 1.25rem), calc(var(--py, 0) * -100%));
+}
+
+/* étiquettes (rareté, niveau, piles) : plates, un filet fin, plus de cadre vert épais ni de lueur */
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-cartouche {
+  height: 1.9rem;
+  padding: 0.1rem 0.6rem 0;
+  font-size: 0.75rem;
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-cartouche::before {
+  background: rgba(233, 240, 236, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(233, 240, 236, 0.18);
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-cartouche-value {
+  font-size: 1rem;
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-detail-nom {
+  font: 400 1.5rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+/* niveau ou piles : en haut à droite de la boîte, sans cadre, le chiffre à la couleur de son palier (--nc, ui.js) ;
+   « NIV. » en petit pour une arme seulement (« ×2 » et « 2/5 » se lisent seuls) */
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-detail-niv {
+  position: absolute;
+  top: 0.9rem;
+  right: 1.1rem;
+  height: auto;
+  padding: 0;
+  gap: 0.35rem;
+  align-items: baseline;
+  background: none;
+  box-shadow: none;
+  border: 0;
+  outline: 0;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-detail-niv::before {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-detail-niv .sr-cartouche-value {
+  font: 400 1.75rem/1 var(--sr-mono);
+  color: var(--nc, var(--pile-texte));
+  background: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-detail-niv > :not(.sr-cartouche-value) {
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.12em;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur:not([data-genre='arme']) .sr-detail-niv > :not(.sr-cartouche-value) {
+  display: none;
+}
+
+/* le nom ne passe pas sous le chiffre */
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur .sr-detail-tete {
+  padding-right: 4.5rem;
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::before,
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-detail::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-detail::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail .sr-detail-nom {
+  font-size: 1.5rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail .sr-detail-puces {
+  gap: 0.4rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail .sr-cartouche {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  box-shadow: inset 0 0 0 1px rgba(233, 240, 236, 0.18);
+  border: 0;
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail .sr-detail-ligne,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail .sr-detail-evo {
+  background: rgba(233, 240, 236, 0.04);
+  box-shadow: none;
+  border: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail .sr-detail-effet {
+  font: 400 0.75rem/1.4 var(--sr-text);
+  color: var(--pile-doux);
+}
+
+/* =====================================================================================================================
+   NOYAU, onglet Agents v2 (Femz, 19/11 : « tout est trop à gauche et compacté ») : trois zones sur TOUTE la largeur —
+   la liste des agents à gauche ; l'agent en grand au centre ; à droite son nom, son arme, son passif et ses
+   caractéristiques, dans cet ordre (ce qu'on lit pour choisir).
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-agents-page {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 2.5rem;
+  width: 100%;
+  align-items: start;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-agents.sr-hub-agents {
+  width: auto;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche-hote {
+  padding: 0;
+  min-width: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24rem;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  column-gap: 3rem;
+  row-gap: 1rem;
+  width: auto;
+  padding: 0;
+}
+
+/* corps et colonne gauche « ouverts » : leurs enfants (arme signature, passif, portrait) se placent dans la grille */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-corps,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-corps > .sr-fiche-col:first-child {
+  display: contents;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait {
+  grid-column: 1;
+  grid-row: 1 / 6;
+  align-self: center;
+  justify-self: center;
+  padding: 0;
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait img {
+  width: round(nearest, 12rem, 48px);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-3d .sr-fiche-3d {
+  width: 15rem;
+  height: 21rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau > h2 {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-sig {
+  grid-column: 2;
+  grid-row: 2;
+  width: 4.6rem;
+  height: 4.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-passif {
+  grid-column: 2;
+  grid-row: 3;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau > .sr-carac {
+  grid-column: 2;
+  grid-row: 4;
+  position: static;
+  width: auto;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--pile-filet);
+}
+
+/* retouches : 6 emplacements d'objets = une rangée de 6 ; au Noyau, les caractéristiques sur deux colonnes (elles
+   débordaient en bas) et l'image fixe d'un agent pas encore chargé à sa taille d'avant (agrandie, elle bavait) */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-carac-liste {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.6rem;
+}
+
+/* chaque ligne (nom … valeur) devient une case de la grille à deux colonnes (ui.css la met en display: contents) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-carac-ligne {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait img {
+  width: round(nearest, 9rem, 48px);
+}
+
+/* colonne de droite du Noyau un peu resserrée : la dernière ligne des caractéristiques était coupée en bas */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau {
+  row-gap: 0.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-sig {
+  width: 3.6rem;
+  height: 3.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau > .sr-carac {
+  padding-top: 0.7rem;
+}
+
+/* =====================================================================================================================
+   LOOK « GLOW » (Femz, 20/11, réf. cartes de reliques) — composant commun : plaque à COINS BISEAUTÉS, filet de 2 px à la
+   couleur --c, lueur douce autour, filets d'accent (trait en retrait au-dessus du coin haut gauche, tirets et talon en
+   bas). --c = la couleur qui a un SENS : palier de niveau d'une arme (HUD_PALIERS), rareté d'un objet ou d'une carte.
+   Sans filter (contrat de l'interface) : la plaque est un ::before découpé (clip-path), la lueur une box-shadow de
+   l'élément lui-même (non découpé) ; les diagonales des coins sont dessinées dans le fond du ::before.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] {
+  --glow-biseau: 0.9rem;
+  --glow-fond: #0b1118;
+}
+
+/* =====================================================================================================================
+   MARCHAND / DÉCRYPTAGE « A3 » (Femz, 20/11 : maquette validée « parfait ») — un seul bloc centré dans le cadre :
+   en-tête, puis l'ARSENAL en cases à gauche et UNE grande carte à droite (l'arme choisie : identité et description de
+   l'amélioration visée | ses cinq améliorations en lignes), puis « J'ai fini » ; même pas entre les trois. Fond
+   « baie de serveurs » (outils/fond_terminal.py). Chaque case et la carte au look glow, couleur = palier de niveau.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] {
+  --pile-terminal: url('../assets/ui/fond-terminal.png') center / cover no-repeat #070b10;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop {
+  background: var(--pile-terminal);
+  image-rendering: pixelated;
+  justify-content: center;
+  gap: 2.8rem;
+  padding: 0 6.4rem; /* proportions de la maquette validée (dessinée en rem de 16 px à 1600 de large ; le jeu y
+     a des rem de 20 px : dimensions de mise en page × 0,8, textes gardés au-dessus du plancher de 12 px) */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop > * {
+  image-rendering: auto;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-head {
+  align-items: flex-end;
+  padding: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-head h2 {
+  margin: 0;
+  font: 400 2.6rem/1 var(--sr-mono);
+  letter-spacing: 0;
+  color: var(--pile-texte);
+  text-transform: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-next {
+  margin-top: 0.5rem;
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  color: var(--pile-gris);
+}
+
+/* corps : arsenal | carte, titres de colonnes sur la même ligne, mêmes hauteurs */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-corps {
+  display: grid;
+  grid-template-columns: 20.5rem minmax(0, 1fr);
+  gap: 1.9rem;
+  align-items: stretch;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-etiq {
+  margin: 0;
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-cases {
+  display: grid;
+  grid-template-columns: repeat(3, 6.4rem);
+  grid-auto-rows: 6.4rem;
+  gap: 0.65rem;
+}
+
+/* ---- composant glow : case de l'arsenal et grande carte ---- */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard {
+  --c: #c3cbd6;
+  --b: var(--glow-biseau);
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  clip-path: none;
+  transform: none;
+  box-shadow: 0 0 0.35rem color-mix(in srgb, var(--c) 45%, transparent), 0 0 1.1rem color-mix(in srgb, var(--c) 18%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::before,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: auto;
+  height: auto;
+  border: 0;
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 2px var(--c);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(var(--c), var(--c)) right calc(var(--b) + 0.3rem) bottom 0.35rem / 2.4rem 2px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, transparent) 0 0.35rem, transparent 0.35rem 0.6rem) left 1.2rem bottom 0.35rem / 3rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 16%, var(--glow-fond)) 0%, var(--glow-fond) 45%, #080d13 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::after,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--b) + 0.5rem);
+  top: -0.35rem;
+  width: 3.2rem;
+  height: 2px;
+  background: var(--c);
+  opacity: 0.9;
+  pointer-events: none;
+  inset: auto;
+  inset-inline-start: calc(var(--b) + 0.5rem);
+  inset-block-start: -0.35rem;
+}
+
+/* case de l'arsenal : icône au centre, niveau en bas à droite à la couleur du palier */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case {
+  --b: 0.6rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 0 0.25rem color-mix(in srgb, var(--c) 28%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::before {
+  opacity: 0.75;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::after {
+  width: 1.8rem;
+  inset-inline-start: calc(var(--b) + 0.3rem);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case > .sr-ic {
+  width: 3.7rem;
+  height: 3.7rem;
+  font-size: 3.7rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case-n {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.5rem;
+  font: 400 1rem/1 var(--sr-mono);
+  color: var(--c);
+}
+
+/* l'arme choisie : plaque pleine, lueur forte */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case:hover {
+  box-shadow: 0 0 0.4rem color-mix(in srgb, var(--c) 60%, transparent), 0 0 1.2rem color-mix(in srgb, var(--c) 25%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case.sr-sel::before {
+  opacity: 1;
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 30%, var(--glow-fond)) 0%, var(--glow-fond) 70%);
+}
+
+/* emplacement libre : plaque biseautée sombre, sans filet ni lueur */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-cases > .sr-wvide {
+  background: #0d1318;
+  border: 0;
+  box-shadow: none;
+  clip-path: polygon(0.6rem 0, 100% 0, 100% calc(100% - 0.6rem), calc(100% - 0.6rem) 100%, 0 100%, 0 0.6rem);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-cases > .sr-wvide::before,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-cases > .sr-wvide::after {
+  content: none;
+}
+
+/* ---- la grande carte : seule l'arme choisie est montrée ---- */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid {
+  display: block;
+  flex: none;
+  padding: 0;
+  height: 13.45rem; /* = l'arsenal : 2 × 6,4 rem + 0,65 rem */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard:not(.sr-wcard-sel) {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard.sr-wcard-sel {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  column-gap: 1.6rem;
+  row-gap: 0.4rem;
+  height: 100%;
+  min-height: 0;
+  padding: 1.3rem;
+  box-sizing: border-box;
+  animation: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard > .sr-wcard-head {
+  display: contents;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard-head > .sr-ic {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: start;
+  width: 4rem;
+  height: 4rem;
+  font-size: 4rem;
+  padding: 0.25rem;
+  margin: 0;
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wname {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: baseline;
+  justify-self: start;
+  max-width: none;
+  margin: 0;
+  overflow: visible;
+  white-space: nowrap;
+  text-overflow: clip;
+  padding: 0 2.6rem 0 0;
+  font: 400 1.35rem/1.2 var(--sr-mono);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--pile-texte);
+}
+
+/* niveau : à droite du nom, sans pastille, à la couleur du palier, « NIV. » en petit */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlevel {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: baseline;
+  justify-self: end;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlevel .sr-wlevel-lab {
+  display: inline;
+  font: 400 0.7rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlevel .sr-num {
+  font: 400 1.35rem/1 var(--sr-mono);
+  color: var(--c);
+  text-shadow: 0 0 0.5rem color-mix(in srgb, var(--c) 55%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard > .sr-wdesc,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard > .sr-wdetail,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlock,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-buy {
+  display: none;
+}
+
+/* sous l'arme : l'amélioration visée — nom (jaune), effet chiffré (cyan), une phrase */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard > .sr-wchoix {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wchoix-titre {
+  margin: 0;
+  font: 400 0.7rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-jaune);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wchoix-effet {
+  margin: 0;
+  font: 400 0.9rem/1.2 var(--sr-mono);
+  color: #3fe0e8;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wchoix-phrase {
+  margin: 0;
+  font: 400 0.75rem/1.4 var(--sr-text);
+  color: var(--pile-doux);
+}
+
+/* les cinq améliorations, en lignes réparties sur la hauteur de la carte */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard > .sr-wlignes {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin: 0;
+  min-height: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat {
+  grid-template-columns: 6.8rem minmax(0, 1fr) auto 2.7rem 3.6rem; /* 4e colonne fixe : « −30 % » (vide hors solde, crans alignés) */
+  column-gap: 0.8rem;
+  height: auto;
+  min-height: 1.85rem;
+  padding: 0 0.8rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat.sr-overcharge {
+  grid-template-columns: 6.8rem auto minmax(0, 1fr) 2.7rem 3.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat::before {
+  background: rgba(233, 240, 236, 0.035);
+  box-shadow: inset 0.2rem 0 0 var(--c);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat:hover::before,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat.sr-focus::before {
+  background: linear-gradient(90deg, rgba(244, 240, 80, 0.12), rgba(244, 240, 80, 0.03));
+  box-shadow: inset 0 0 0 0.12rem var(--pile-jaune), 0 0 0.8rem rgba(244, 240, 80, 0.25);
+}
+
+/* ordre dans la ligne : nom | valeur → suivante | crans | prix */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-label {
+  order: 0;
+  display: block; /* ui.css : -webkit-box + overflow hidden + interligne 1 coupaient les accents (« DEGATS ») */
+  overflow: visible;
+  padding: 0;
+  font: 400 0.75rem/1.3 var(--sr-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pile-texte);
+  white-space: nowrap;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-value {
+  order: 1;
+  justify-content: flex-start;
+  padding: 0;
+  font: 400 0.8rem/1 var(--sr-mono);
+  color: var(--pile-doux);
+  white-space: nowrap;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-cur,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-arrow,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-next,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-unit {
+  display: inline;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-arrow {
+  margin: 0 0.4rem;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-next {
+  color: #3fe0e8;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-unit {
+  margin-left: 0.25rem;
+  color: #3fe0e8;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-val-gain {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-max .sr-val-arrow,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-max .sr-val-next {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-pips {
+  order: 2;
+  display: flex;
+  gap: 0.2rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-pip {
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 0;
+  border-radius: 0;
+  background: rgba(233, 240, 236, 0.14);
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-pip.sr-on {
+  background: var(--c);
+  box-shadow: 0 0 0.3rem color-mix(in srgb, var(--c) 60%, transparent);
+}
+
+/* prix : losange + chiffre jaune, sans pastille ; trop cher = gris ; au maximum = « max » */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price {
+  order: 4;
+  grid-column: 5; /* toujours la dernière colonne, que l'étiquette de solde soit là ou non */
+  justify-self: end;
+  gap: 0.3rem;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price .sr-num,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price .sr-ic {
+  font: 400 0.8rem/1 var(--sr-mono);
+  color: var(--pile-jaune);
+  fill: var(--pile-jaune);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-poor .sr-stat-price {
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-poor .sr-stat-price .sr-num,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-poor .sr-stat-price .sr-ic {
+  color: #5d6b66;
+  fill: #5d6b66;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-poor .sr-stat-label,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-poor .sr-stat-value {
+  opacity: 0.55;
+}
+
+/* solde : l'étiquette entre dans la ligne, juste avant le prix (elle chevauchait la ligne du dessus) ; prix soldé en vert */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-sale-tag {
+  position: static;
+  order: 3;
+  grid-column: 4;
+  justify-self: end;
+  padding: 0.18rem 0.35rem 0.14rem;
+  font: 600 0.7rem/1 var(--sr-mono);
+  color: #06140a;
+  background: #4be36a;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-sale .sr-stat-price .sr-num,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat.sr-sale .sr-stat-price .sr-ic {
+  color: #4be36a;
+  fill: #4be36a;
+}
+
+/* pied : « J'ai fini » centré, plaque jaune pleine qui luit, sans touche */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot {
+  justify-content: center;
+  padding: 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-lead,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-key {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-btn.sr-primary {
+  min-width: 15rem;
+  height: auto;
+  padding: 0.8rem 2.5rem;
+  justify-content: center;
+  font: 400 1.25rem/1 var(--sr-mono);
+  letter-spacing: 0.06em;
+  color: var(--pile-nuit);
+  background: var(--pile-jaune);
+  border: 0;
+  box-shadow: 0 0 1.2rem rgba(244, 240, 80, 0.35);
+  clip-path: none;
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-btn.sr-primary .sr-btn-label {
+  color: inherit;
+  text-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-btn.sr-primary:hover,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-btn.sr-primary.sr-focus {
+  background: #fff6c8;
+  outline: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-btn.sr-primary::before,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-foot .sr-btn.sr-primary::after {
+  content: none;
+}
+
+/* (20/11, Femz) caractéristiques de l'inventaire (Tab) : un filet entre les groupes — survie, attaque, mouvement,
+   butin (config.js, FICHE_STATS, « groupe: true ») — pour repérer chaque ligne d'un coup d'œil */
+/* la ligne est en display: contents (ses trois cellules sont dans la grille de la liste) : le filet est son ::before,
+   qui devient une rangée pleine largeur de la grille, juste avant la première cellule du groupe */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-carac-ligne.sr-carac-groupe::before {
+  content: '';
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 0.4rem 0 0.3rem;
+  background: rgba(233, 240, 236, 0.16);
+}
+
+/* =====================================================================================================================
+   LOOK GLOW appliqué aux autres écrans (Femz, 20/11 : « applique les règles du nouveau look glow sur les autres UI du
+   jeu là où c'est logique ») — partout où une boîte porte un objet qui a un NIVEAU ou une RARETÉ : cartes du choix de
+   niveau, lots de coffre, cases pleines de l'inventaire, boîte d'infos au survol. Les listes de menus (Pile) restent
+   sans cadre. --c : rareté (--rc, posée par ui.js) ; bonus de niveau sans rareté = vert des améliorations ; arme =
+   palier de niveau ; objet = sa rareté (--ic).
+   ===================================================================================================================== */
+
+/* ---- choix de niveau et lots de coffre : la carte M3 devient une plaque glow ---- */
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot {
+  --c: var(--rc, #5cf07a);
+  --b: var(--glow-biseau);
+  box-shadow: 0 0 0.4rem color-mix(in srgb, var(--c) 45%, transparent), 0 0 1.4rem color-mix(in srgb, var(--c) 18%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:not(.sr-card-item) {
+  --c: #5cf07a; /* une amélioration n'a pas de rareté : le vert des améliorations (inventaire) */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card::before,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot::before {
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 2px var(--c);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(var(--c), var(--c)) right calc(var(--b) + 0.3rem) bottom 0.35rem / 2.4rem 2px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, transparent) 0 0.35rem, transparent 0.35rem 0.6rem) left 1.2rem bottom 0.35rem / 3rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 16%, var(--glow-fond)) 0%, var(--glow-fond) 45%, #080d13 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card::after,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot::after {
+  content: '';
+  position: absolute;
+  inset: auto;
+  inset-inline-start: calc(var(--b) + 0.5rem);
+  inset-block-start: -0.35rem;
+  width: 3.2rem;
+  height: 2px;
+  background: var(--c);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* carte visée : la lueur de SA couleur s'intensifie et l'accent passe au jaune (le seul jaune : le focus) */
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:hover,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:focus-visible,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:hover,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:focus-visible {
+  --m3-l1: var(--c);
+  --m3-l2: var(--c);
+  transform: none;
+  box-shadow: 0 0 0.6rem color-mix(in srgb, var(--c) 70%, transparent), 0 0 2rem color-mix(in srgb, var(--c) 30%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:focus-visible::after,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:focus-visible::after {
+  background: var(--pile-jaune);
+  width: 4.5rem;
+}
+
+/* bannissement armé : le rouge garde la main */
+:root[data-sr-theme='carte-mere'] .sr-levelup.sr-bannir .sr-cards > .sr-card,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot.sr-lot-ban {
+  --c: #ff4b5c;
+}
+
+/* ---- inventaire : cases PLEINES en plaque glow (les vides restent des plaques sourdes) ---- */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide) {
+  --b: 0.55rem;
+  isolation: isolate;
+  background: none;
+  clip-path: none;
+  box-shadow: 0 0 0.3rem color-mix(in srgb, var(--c) 40%, transparent), 0 0 0.9rem color-mix(in srgb, var(--c) 15%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide) {
+  --c: #5cf07a;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide) {
+  --c: var(--ic, #8fc0ff);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 2px var(--c);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 22%, var(--case-fond)) 0%, var(--case-fond) 60%);
+}
+
+/* la case survolée / ouverte : lueur plus forte (le jaune reste le repère du focus) */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail-on:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche [data-detail]:not(.sr-vide):hover {
+  box-shadow: 0 0 0.5rem color-mix(in srgb, var(--c) 70%, transparent), 0 0 1.4rem color-mix(in srgb, var(--c) 28%, transparent), inset 0 0 0 0.12rem var(--pile-jaune);
+}
+
+/* ---- boîte d'infos au survol : plaque glow à la couleur de l'item (--dc : rareté, arme, vert des améliorations) ---- */
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur {
+  --c: var(--dc, #5cf07a);
+  --b: var(--glow-biseau);
+  isolation: isolate;
+  background: none;
+  box-shadow: 0 0 0.5rem color-mix(in srgb, var(--c) 45%, transparent), 0 0 1.6rem color-mix(in srgb, var(--c) 18%, transparent), 0 0.5rem 1.5rem rgba(0, 0, 0, 0.55);
+}
+
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 2px var(--c);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(var(--c), var(--c)) right calc(var(--b) + 0.3rem) bottom 0.35rem / 2.4rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 16%, var(--glow-fond)) 0%, var(--glow-fond) 45%, #080d13 100%);
+}
+
+/* (20/11, Femz : « retire les carrés quand l'UI a des bords hexagonaux ») : la lueur est une box-shadow de l'élément,
+   qui suivait son rectangle — un angle droit se dessinait autour de chaque coin coupé. Le contrat interdit filter
+   (ui.test, H) : l'élément prend un rayon sur ses DEUX coins biseautés (haut gauche, bas droite), la box-shadow suit ce
+   rayon et épouse le biseau ; la plaque (::before, découpée) garde ses coins nets et reçoit une lueur intérieure. */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur {
+  border-radius: var(--b) 0 var(--b) 0;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::before,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard::before,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card::before,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::before {
+  box-shadow: inset 0 0 0 2px var(--c), inset 0 0 0.9rem color-mix(in srgb, var(--c) 22%, transparent);
+}
+
+/* =====================================================================================================================
+   LOOK GLOW au NOYAU (Femz, 20/11 : « fais voir comment ça rend dans le Noyau ») — mêmes plaques biseautées que le
+   marchand, là où une boîte porte un ÉTAT : couleur = cet état.
+   Collection : case découverte = vert, révélée = bleu, inconnue = plaque sourde ; la fiche de la case = vert.
+   Succès : réussi = vert, en cours = bleu, verrouillé = gris. Déblocages : débloqué = vert, en vente = cyan,
+   trop cher = bleu-gris, en attente d'un succès = gris. Agents : l'arme signature = rouge Root (comme l'inventaire).
+   La liste des agents, les onglets et le pied restent en style Pile (texte, sans cadre).
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu { --c: #5cf07a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele:not(.sr-vu) { --c: #4da3ff; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche { --c: #5cf07a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes.sr-reussis { --c: #5cf07a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes.sr-enCours { --c: #4da3ff; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes.sr-verrouilles { --c: #6d7a75; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente { --c: #3fe0e8; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-debloque { --c: #5cf07a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-pauvre { --c: #4d6b7a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-attente { --c: #6d7a75; }
+/* !important : la case est partagée avec l'inventaire de la pause, qui pose --c (palier de niveau) EN LIGNE sur l'élément */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide) { --c: #ff4b5c !important; }
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide) {
+  --b: 0.7rem;
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  border-image: none;
+  background: none;
+  clip-path: none;
+  border-radius: var(--b) 0 var(--b) 0;
+  box-shadow: 0 0 0.3rem color-mix(in srgb, var(--c) 40%, transparent), 0 0 1rem color-mix(in srgb, var(--c) 15%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: auto;
+  height: auto;
+  border: 0;
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 2px var(--c), inset 0 0 0.9rem color-mix(in srgb, var(--c) 20%, transparent);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1.5px), var(--c) calc(50% - 1.5px) calc(50% + 1.5px), transparent calc(50% + 1.5px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 14%, var(--glow-fond)) 0%, var(--glow-fond) 50%, #080d13 100%);
+}
+
+/* accent en retrait au-dessus du coin haut gauche : cartes et fiche seulement (pas sur les petites cases) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::after {
+  content: '';
+  position: absolute;
+  inset: auto;
+  inset-inline-start: calc(var(--b) + 0.5rem);
+  inset-block-start: -0.35rem;
+  width: 3.2rem;
+  height: 2px;
+  background: var(--c);
+  opacity: 0.9;
+  border: 0;
+  pointer-events: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::after {
+  content: none;
+}
+
+/* case inconnue de la Collection : plaque biseautée sourde, sans filet ni lueur */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case:not(.sr-vu):not(.sr-revele) {
+  border: 0;
+  background: #0d1318;
+  box-shadow: none;
+  clip-path: polygon(0.5rem 0, 100% 0, 100% calc(100% - 0.5rem), calc(100% - 0.5rem) 100%, 0 100%, 0 0.5rem);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case:not(.sr-vu):not(.sr-revele)::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case:not(.sr-vu):not(.sr-revele)::after {
+  content: none;
+}
+
+/* focus clavier / case fixée du Noyau : la lueur de sa couleur s'intensifie, filet jaune intérieur (le focus) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-fixe,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente:hover {
+  box-shadow: 0 0 0.5rem color-mix(in srgb, var(--c, #8ea69a) 70%, transparent), 0 0 1.4rem color-mix(in srgb, var(--c, #8ea69a) 28%, transparent), inset 0 0 0 0.12rem var(--pile-jaune);
+}
+
+/* (20/11) avec le rayon, un creux sombre restait entre la diagonale du biseau et l'arc de la lueur (la box-shadow ne
+   peint qu'à l'extérieur de l'élément) : on y peint la lueur à la main — un dégradé de --c, fort contre la diagonale,
+   éteint vers le coin, dans le triangle hors de la plaque (fond de l'élément, coupé par le rayon). */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide) {
+  background:
+    linear-gradient(135deg, transparent 15%, color-mix(in srgb, var(--c) 40%, transparent) 50%, transparent 50%) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(315deg, transparent 15%, color-mix(in srgb, var(--c) 40%, transparent) 50%, transparent 50%) right bottom / var(--b) var(--b) no-repeat;
+}
+
+
+/* =====================================================================================================================
+   LOOK GLOW v2 (Femz, 20/11 : « non, tu as créé un comblage — je veux que TOUTE la bordure et le glow soient adéquats
+   au biseau ») : le filet ET la lueur sont un même calque (::after) découpé par un MASQUE SVG en neuf zones
+   (-webkit-mask-box-image) : les coins du masque portent la forme exacte du biseau, seuls les bords s'étirent ; la
+   couleur est le fond du calque (var(--c)), donc n'importe quelle couleur de sens. La lueur (traits flous DANS le SVG,
+   une image, pas un filter CSS : ui.test H tenu) longe la diagonale dedans comme dehors. Le calque déborde de la boîte
+   de 1,2 × le biseau (place de la lueur) ; le SVG garde cette marge (12 unités sur 64, biseau de 10). Remplace la
+   box-shadow, le rayon et le dégradé de comblage de la v1. Les filets d'accent passent DANS la plaque.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] {
+  --glow-masque: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cdefs%3E%3Cfilter id='a' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='2.5'/%3E%3C/filter%3E%3Cfilter id='b' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3C/defs%3E%3Cg fill='none' stroke='white' stroke-linejoin='miter'%3E%3Cpolygon points='22,12 52,12 52,42 42,52 12,52 12,22' stroke-width='4' opacity='.4' filter='url(%23b)'/%3E%3Cpolygon points='22,12 52,12 52,42 42,52 12,52 12,22' stroke-width='2.5' opacity='.6' filter='url(%23a)'/%3E%3Cpolygon points='22,12 52,12 52,42 42,52 12,52 12,22' stroke-width='1.4'/%3E%3C/g%3E%3C/svg%3E");
+  --glow-masque-fort: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cdefs%3E%3Cfilter id='a' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='2.5'/%3E%3C/filter%3E%3Cfilter id='b' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3C/defs%3E%3Cg fill='none' stroke='white' stroke-linejoin='miter'%3E%3Cpolygon points='22,12 52,12 52,42 42,52 12,52 12,22' stroke-width='4' opacity='.75' filter='url(%23b)'/%3E%3Cpolygon points='22,12 52,12 52,42 42,52 12,52 12,22' stroke-width='2.5' opacity='.9' filter='url(%23a)'/%3E%3Cpolygon points='22,12 52,12 52,42 42,52 12,52 12,22' stroke-width='1.4'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case:hover,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:hover,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:focus-visible,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:hover,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:focus-visible,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail-on:not(.sr-vide),
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche [data-detail]:not(.sr-vide):hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu.sr-fixe,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes:hover,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-sel,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente:hover {
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::before,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard::before,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card::before,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide)::before {
+  box-shadow: inset 0 0 0.9rem color-mix(in srgb, var(--c) 16%, transparent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 16%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 45%, #080d13 100%);
+}
+
+/* grandes boîtes : accents dans la plaque — trait en haut à gauche, tirets en bas à gauche, talon en bas à droite */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard::before,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card::before,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot::before,
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before {
+  background:
+    linear-gradient(var(--c), var(--c)) left calc(var(--b) + 0.6rem) top 0.4rem / 3.2rem 2px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, transparent) 0 0.35rem, transparent 0.35rem 0.6rem) left 1.2rem bottom 0.4rem / 3rem 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) right calc(var(--b) + 0.6rem) bottom 0.4rem / 2.4rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 16%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 45%, #080d13 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case::after,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-grid > .sr-wcard::after,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card::after,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot::after,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide)::after,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide)::after,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide)::after,
+:root[data-sr-theme='carte-mere'] :is(.sr-fiche, .sr-hub) > .sr-detail.sr-detail-curseur::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide)::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -1;
+  width: auto;
+  height: auto;
+  margin: 0;
+  border: 0;
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+  clip-path: none;
+  background: var(--c);
+  box-shadow: none;
+  -webkit-mask-box-image: var(--glow-masque) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+/* visée / focus : la lueur de SA couleur s'intensifie (même forme) */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case.sr-sel::after,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:focus-visible::after,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lots > .sr-lot:focus-visible::after,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-detail-on:not(.sr-vide)::after,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche [data-detail]:not(.sr-vide):hover::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu.sr-sel::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu.sr-fixe::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele.sr-sel::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes.sr-sel::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-sel::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente:hover::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -1;
+  width: auto;
+  height: auto;
+  background: var(--c);
+  -webkit-mask-box-image: var(--glow-masque-fort) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+/* inventaire : la plaque garde le fond PLEIN de sa famille (Femz, 20/11 : armes gris, améliorations vert, objets bleu
+   du HUD) — la règle commune du look glow v2 le remplaçait par le fond sombre des cartes */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-b:not(.sr-vide)::before,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-o:not(.sr-vide)::before {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 22%, var(--case-fond)) 0%, var(--case-fond) 60%);
+}
+
+/* =====================================================================================================================
+   LOOK GLOW — onglet SUCCÈS du Noyau (Femz, 20/11 : « go look glow ») : le résumé et les filtres prennent la plaque
+   biseautée + le filet/lueur masqué de la v2 ; l'en-tête de section prend la couleur d'état des cartes (vert, bleu,
+   gris — l'étiquette pleine rouge de « Réussis » contredisait le vert des cartes réussies) ; dans les cartes, plus de
+   cadres carrés (vignette, récompense, boîte du lien) : règle « pas de carré dans une boîte à bords biseautés ».
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth { --c: #5cf07a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre { --c: #6d7a75; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre.sr-actif { --c: var(--pile-jaune, #f4f050); }
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre {
+  --b: 0.7rem;
+  isolation: isolate;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre {
+  --b: 0.45rem;
+  position: relative;
+  color: var(--pile-texte, #e9f0ec);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth::before,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0.9rem color-mix(in srgb, var(--c) 14%, transparent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 14%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 50%, #080d13 100%);
+}
+
+/* résumé : mêmes accents que les grandes boîtes (trait en haut à gauche, tirets en bas, talon) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth::before {
+  background:
+    linear-gradient(var(--c), var(--c)) left calc(var(--b) + 0.6rem) top 0.4rem / 3.2rem 2px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, transparent) 0 0.35rem, transparent 0.35rem 0.6rem) left 1.2rem bottom 0.4rem / 3rem 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) right calc(var(--b) + 0.6rem) bottom 0.4rem / 2.4rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 14%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 50%, #080d13 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--c);
+  -webkit-mask-box-image: var(--glow-masque) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre:hover::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre.sr-sel::after,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre.sr-actif::after {
+  -webkit-mask-box-image: var(--glow-masque-fort) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre:hover:not(.sr-actif),
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre.sr-sel:not(.sr-actif) {
+  --c: #a9b8b1;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre.sr-actif,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtre.sr-actif .sr-hub-filtre-n {
+  color: var(--pile-jaune, #f4f050);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-filtres {
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* résumé : séparateurs fins neutres (comme les catégories des caractéristiques) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-tete,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-ligne {
+  border-bottom-color: rgba(233, 240, 236, 0.12);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-ligne:last-child {
+  border-bottom: 0;
+}
+
+/* en-tête de section : texte de la couleur d'état + filet fin qui luit, sans étiquette pleine */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section-reussis { --sec: #5cf07a; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section-enCours { --sec: #4da3ff; }
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section-verrouilles { --sec: #8ea69a; }
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section {
+  align-items: center;
+  gap: 0.7rem;
+  margin: 1rem 0 0.7rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section:first-child {
+  margin-top: 0.2rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section-nom {
+  padding: 0;
+  color: var(--sec);
+  background: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-section-filet {
+  height: 1px;
+  background: linear-gradient(90deg, var(--sec), color-mix(in srgb, var(--sec) 10%, transparent));
+  box-shadow: 0 0 0.4rem color-mix(in srgb, var(--sec) 60%, transparent);
+}
+
+/* dans la carte : vignette et récompense sans cadre carré ; la boîte du lien = colonne séparée par un filet fin */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes-vig,
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes-rec {
+  background: none;
+  box-shadow: none;
+  clip-path: polygon(0.45rem 0, 100% 0, 100% calc(100% - 0.45rem), calc(100% - 0.45rem) 100%, 0 100%, 0 0.45rem);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes-lien {
+  padding: 0.3rem 0 0.3rem 0.9rem;
+  background: none;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent);
+}
+
+/* lien et récompense : le survol éclaire en jaune (le focus), sans cadre */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes-lien:hover {
+  box-shadow: inset 2px 0 0 var(--pile-jaune, #f4f050);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes-lien:hover .sr-hub-succes-lien-nom {
+  color: var(--pile-jaune, #f4f050);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes-rec:hover {
+  background: rgba(244, 240, 80, 0.14);
+  box-shadow: none;
+}
+
+/* résumé : place pour les accents du bas ; colonne d'icône de largeur fixe (la pièce des Pixelz décalait sa ligne) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth {
+  padding: 0.3rem 0 0.8rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+}
+
+/* résumé : icônes pixel propres (12 × 12, multiples entiers à 1600 × 900 : 48 et 24 px) — trophée jaune, sablier bleu
+   (couleur « en cours » des cartes), horloge et cadenas en gris doux */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-gros-ic .sr-ic {
+  width: 2.4rem;
+  height: 2.4rem;
+  fill: var(--pile-jaune, #f4f050);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-ic .sr-ic {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-ic use[href='#sr-i-sablier'] {
+  fill: #4da3ff;
+}
+
+/* résumé, ligne Pixelz (20/11, Femz : « garde gauche, retire celle du bas ») : une seule pièce, celle de la colonne
+   d'icône ; le montant n'affiche que le chiffre (setMontant y pose aussi la pièce, partagée avec les autres montants) */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-synth-val.sr-montant > .sr-px {
+  display: none;
+}
+
+/* =====================================================================================================================
+   LOOK GLOW v2 — écran « Hors service » (§ E5.Q ; Femz, 21/11 : « go look glow ») : la recette de la v2 (plaque ::before
+   à coins biseautés, filet + lueur = UN calque ::after masqué par --glow-masque, couleur = sens) sur l'écran de fin.
+   Le panneau est une plaque ROUGE (la défaite) ; les deux blocs du bilan des plaques sourdes (armes : gris ; Pixelz :
+   vert, ce qu'on gagne) ; les boutons des plaques : UN SEUL jaune, le focus (« Rejouer » tant que la souris n'est sur
+   aucun bouton, sinon le bouton survolé) ; « Menu » gris. Plus aucune touche affichée (règle de Femz du 19/11). Le
+   « +N » des Pixelz et la piste décorative du coin perdent leur jaune. Sans filter ; aucune animation ajoutée.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-gameover > .sr-panel {
+  --c: #ff4b5c;
+  --b: 1.4rem;
+  isolation: isolate;
+  border: 0;
+  border-image: none;
+  border-radius: 0;
+  clip-path: none;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover > .sr-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border: 0;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 1.2rem color-mix(in srgb, var(--c) 14%, transparent);
+  background:
+    linear-gradient(var(--c), var(--c)) left calc(var(--b) + 0.8rem) top 0.5rem / 4.5rem 2px no-repeat,
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--c) 70%, transparent) 0 0.35rem, transparent 0.35rem 0.6rem) left 1.6rem bottom 0.5rem / 4rem 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) right calc(var(--b) + 0.8rem) bottom 0.5rem / 3rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 12%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 40%, #080d13 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover > .sr-panel::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -1;
+  width: auto;
+  height: auto;
+  border: 0;
+  pointer-events: none;
+  background: var(--c);
+  -webkit-mask-box-image: var(--glow-masque-fort) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+/* blocs du bilan : plaques sourdes, couleur = sens */
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-bilan-bloc {
+  --c: #6d7a75;
+  --b: 0.7rem;
+  position: relative;
+  isolation: isolate;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-bilan-cycles {
+  --c: #5cf07a;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-bilan-bloc::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0.9rem color-mix(in srgb, var(--c) 14%, transparent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 14%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 50%, #080d13 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-bilan-bloc::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--c);
+  -webkit-mask-box-image: var(--glow-masque) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+/* le gain de Pixelz : plus jaune (un seul jaune à l'écran : le focus) — le vert de ce qu'on gagne */
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-bilan-gain-val {
+  color: #8dffa8;
+}
+
+/* boutons : plaques biseautées ; le focus seul est jaune (plaque pleine jaune, texte nuit) */
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn {
+  --c: #8a9692;
+  --b: 0.55rem;
+  position: relative;
+  isolation: isolate;
+  min-width: 12rem;
+  height: 3rem;
+  padding: 0 1.6rem;
+  border: 0;
+  border-image: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font: 400 1.35rem/1 var(--sr-mono);
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--pile-texte, #e9f0ec);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn .sr-key {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border: 0;
+  border-image: none;
+  border-radius: 0;
+  transform: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0.8rem color-mix(in srgb, var(--c) 14%, transparent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--c) 14%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 60%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -1;
+  width: auto;
+  height: auto;
+  border: 0;
+  opacity: 1;
+  transform: none;
+  pointer-events: none;
+  background: var(--c);
+  -webkit-mask-box-image: var(--glow-masque) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons:not(:has(.sr-btn:hover)) > .sr-btn.sr-primary,
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn:hover {
+  --c: var(--pile-jaune, #f4f050);
+  color: var(--pile-nuit, #0b1118);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons:not(:has(.sr-btn:hover)) > .sr-btn.sr-primary::before,
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn:hover::before {
+  background: var(--c);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons:not(:has(.sr-btn:hover)) > .sr-btn.sr-primary::after,
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons > .sr-btn:hover::after {
+  -webkit-mask-box-image: var(--glow-masque-fort) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+/* =====================================================================================================================
+   CARTES DE NIVEAU ET LOTS DE COFFRE — lecture simplifiée (Femz, 21/11 : « une phrase fixe qui dit ce que fait l'item,
+   puis les stats par ligne en bas en très petit »). La phrase d'effet (.sr-card-flav) redevient le texte principal ; les
+   chiffres (.sr-card-stat) descendent tout en bas de la carte, sous les crans, une ligne par chiffre, en petit et
+   atténués. .sr-card-desc passe en display: contents : ses deux parties deviennent des éléments de la carte (flex
+   colonne), que l'ordre place. Les séparateurs « · » restent dans le texte (lecture d'écran, tests), masqués.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-card .sr-card-desc,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lot .sr-card-desc {
+  display: contents;
+}
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-card .sr-card-flav,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lot .sr-card-flav {
+  display: block;
+  align-self: stretch;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: #e8f4ec;
+  white-space: normal;
+}
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-card .sr-card-stat,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lot .sr-card-stat {
+  order: 10;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 0.1rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(233, 240, 236, 0.12);
+  font-size: 0.75rem; /* plancher de lisibilité : 12 px en 720p, 18 px en 1080p (tests/ui.test.mjs) ; 0,6875 rem = 11 px */
+  line-height: 1.3;
+  color: rgba(232, 244, 236, 0.62);
+  white-space: normal;
+}
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-card .sr-card-sep,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lot .sr-card-sep {
+  display: none;
+}
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-card .sr-card-stat .sr-k,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lot .sr-card-stat .sr-k {
+  text-transform: none;
+}
+/* carte sans phrase d'effet (« Niveau 2 → 3 », règle d'une fusion) : sa ligne reste le texte principal */
+:root[data-sr-theme='carte-mere'] .sr-levelup .sr-card .sr-card-stat.sr-seul,
+:root[data-sr-theme='carte-mere'] .sr-chest .sr-lot .sr-card-stat.sr-seul {
+  order: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  font-size: 0.875rem;
+  color: #e8f4ec;
+}
+
+/* =====================================================================================================================
+   ARME ÉVOLUÉE (21/11, retour d'un testeur relayé par Femz : « les armes évoluées doivent avoir un autre nom + design
+   et un fond jaune pour les différencier ») — classe sr-evo posée par ui.js (weapons.evolved) : case PLEINE dorée,
+   comme les objets ont leur bleu plein et les améliorations leur vert. Inventaire, HUD en partie.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme.sr-evo {
+  --case-fond: #a67a0c;
+  --case-filet: #ffe08a;
+  --c: #ffc83d !important; /* lueur dorée à la place de celle du palier de niveau */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-arme.sr-evo:not(.sr-vide)::before {
+  background: linear-gradient(160deg, #e0a91c 0%, var(--case-fond) 65%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hud .sr-weapons .sr-weapon.sr-evo {
+  --lc: #ffc83d;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hud .sr-weapons .sr-weapon.sr-evo:not(.sr-empty)::before {
+  background: linear-gradient(160deg, #e0a91c 0%, #a67a0c 65%);
+}
+
+/* le chiffre du niveau : blanc sur l'or (doré sur doré ne se lisait que par son contour noir) */
+:root[data-sr-theme='carte-mere'] .sr-hud .sr-weapons .sr-weapon.sr-evo .sr-weapon-level {
+  color: #fff;
+}
+
+/* Paramètres (Femz, 21/11) : plus de record (vague) sur l'écran d'accueil ; « Réglages » ouvre un panneau de
+   paramètres seuls (graphismes, secousses, effets sonores, musique, caméra) */
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos:not(.sr-open) {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open .sr-infos-head,
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open .sr-best,
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open .sr-rule,
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open .sr-infos-rule {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-reglages-titre {
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-doux);
+  margin-bottom: 0.9rem;
+}
+
+/* Fiche (Noyau et pause) avant le portrait 3D (Femz, 21/11) : la planche animée de l'écran des agents, plus la vignette
+   48 × 68 agrandie. Cadre à l'image de la planche (80 × 120 px d'art), hauteur de l'ancienne vignette ; la planche y
+   défile en steps() comme .sr-agent .sr-acard-portrait img.sr-anime (ui.css) ; verrouillé : silhouette fixe. */
+:root[data-sr-theme='carte-mere'] .sr-fiche-portrait .sr-fiche-fig {
+  display: block;
+  overflow: hidden;
+  width: 8.6667rem;
+  height: 13rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig {
+  width: 11.3333rem;
+  height: 17rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-fiche-portrait.sr-3d .sr-fiche-fig {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait .sr-fiche-fig img,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
+  object-position: center bottom;
+  image-rendering: pixelated;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait .sr-fiche-fig img.sr-anime,
+:root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig img.sr-anime {
+  width: calc(var(--n) * 100%);
+  object-fit: fill;
+  animation: sr-acard-idle var(--dur) steps(var(--n), jump-none) infinite var(--dir);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait .sr-fiche-fig img.sr-anime,
+  :root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig img.sr-anime {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* Déplacement à la souris (Femz, 21/11) : repère du clic droit au sol — quatre coins pixel à la couleur de l'agent qui se
+   referment sur le point, puis s'effacent ; aplati par l'inclinaison de la caméra (--aplat) ; sous le HUD. Repère
+   « maintenu » (bouton tenu) : plus petit et plus discret. */
+.sr-clic {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  translate: var(--x, -100px) var(--y, -100px);
+  pointer-events: none;
+}
+
+.sr-clic-sol {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  transform: scaleY(var(--aplat, 0.6));
+  opacity: 0;
+}
+
+.sr-clic-coin {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 0 solid var(--ac, #7ff0d8);
+  box-shadow: 0 0 6px -1px var(--ac, #7ff0d8); /* lueur sans filter (ui.test H) */
+}
+
+.sr-clic-c0 { left: 0; top: 0; border-left-width: 2px; border-top-width: 2px; }
+.sr-clic-c1 { right: 0; top: 0; border-right-width: 2px; border-top-width: 2px; }
+.sr-clic-c2 { left: 0; bottom: 0; border-left-width: 2px; border-bottom-width: 2px; }
+.sr-clic-c3 { right: 0; bottom: 0; border-right-width: 2px; border-bottom-width: 2px; }
+
+.sr-clic-point {
+  position: absolute;
+  left: 15px;
+  top: 15px;
+  width: 4px;
+  height: 4px;
+  background: var(--ac, #7ff0d8);
+  box-shadow: 0 0 4px var(--ac, #7ff0d8);
+}
+
+.sr-clic-on0 .sr-clic-sol {
+  animation: sr-clic-a 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.sr-clic-on1 .sr-clic-sol {
+  animation: sr-clic-b 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.sr-clic:not(.sr-clic-fort) .sr-clic-sol {
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+}
+
+.sr-clic:not(.sr-clic-fort) .sr-clic-point {
+  left: 9px;
+  top: 9px;
+}
+
+@keyframes sr-clic-a {
+  0% { opacity: 1; transform: scaleY(var(--aplat, 0.6)) scale(1.7); }
+  55% { opacity: 1; transform: scaleY(var(--aplat, 0.6)) scale(0.85); }
+  100% { opacity: 0; transform: scaleY(var(--aplat, 0.6)) scale(0.7); }
+}
+
+@keyframes sr-clic-b {
+  0% { opacity: 1; transform: scaleY(var(--aplat, 0.6)) scale(1.7); }
+  55% { opacity: 1; transform: scaleY(var(--aplat, 0.6)) scale(0.85); }
+  100% { opacity: 0; transform: scaleY(var(--aplat, 0.6)) scale(0.7); }
+}
+
+.sr-clic:not(.sr-clic-fort) .sr-clic-coin,
+.sr-clic:not(.sr-clic-fort) .sr-clic-point {
+  opacity: 0.6; /* repère maintenu : plus discret (opacité de ses pièces, l'animation garde celle du groupe) */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-clic-on0 .sr-clic-sol,
+  .sr-clic-on1 .sr-clic-sol {
+    animation-duration: 0.01s;
+    opacity: 0;
+  }
+}
+
+/* § E5.AB.7 : curseur du jeu sous verrou du pointeur (mode Clavier) — réticule de la DA : quatre coins pixel et un point à
+   la couleur de l'agent (--ac), lueur en box-shadow (aucun filter, ui.test H). Posé au quart de pixel (--x, --y, chaînes
+   de ui.js) ; composité (will-change) pour que le navigateur garde la position fractionnaire. Par-dessus le HUD. */
+.sr-curseur {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--taille, 22px);
+  height: var(--taille, 22px);
+  margin: calc(var(--taille, 22px) / -2) 0 0 calc(var(--taille, 22px) / -2);
+  translate: var(--x, -100px) var(--y, -100px);
+  will-change: translate;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.sr-curseur-coin {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border: 0 solid var(--ac, #7ff0d8);
+  box-shadow: 0 0 5px -1px var(--ac, #7ff0d8);
+}
+
+.sr-curseur-c0 { left: 0; top: 0; border-left-width: 2px; border-top-width: 2px; }
+.sr-curseur-c1 { right: 0; top: 0; border-right-width: 2px; border-top-width: 2px; }
+.sr-curseur-c2 { left: 0; bottom: 0; border-left-width: 2px; border-bottom-width: 2px; }
+.sr-curseur-c3 { right: 0; bottom: 0; border-right-width: 2px; border-bottom-width: 2px; }
+
+.sr-curseur-point {
+  position: absolute;
+  left: calc(50% - 2px);
+  top: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  background: var(--ac, #7ff0d8);
+  box-shadow: 0 0 4px var(--ac, #7ff0d8);
+}
+
+/* § E5.AB.5 : verrou refusé par le navigateur — plaque sobre en bas, la partie continue ; le prochain clic le reprend */
+.sr-verrou-plaque {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  translate: -50% 0;
+  padding: 6px 14px;
+  border: 1px solid rgba(127, 240, 216, 0.45);
+  background: rgba(6, 14, 18, 0.72);
+  box-shadow: 0 0 10px -4px rgba(127, 240, 216, 0.6);
+  color: #d8fff6;
+  font-family: var(--sr-mono, monospace);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  z-index: 60;
+}
+
+/* Paramètres : chaque ligne de choix tient sur une ligne ; panneau remonté et resserré (il débordait en 1280 × 720) */
+:root[data-sr-theme='carte-mere'] .sr-choix .sr-cam-seg {
+  grid-template-columns: repeat(var(--nopt, 3), 1fr);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-title .sr-infos.sr-open {
+  top: 12.5rem;
+  max-height: calc(100vh - 13.5rem);
+  overflow-y: auto;
+}
+
+/* § E5.S (audit A6) : « Recommencer » / « Quitter la partie » armés au 1er clic — libellé en rouge (danger), une ligne
+   d'aide dessous ; au repos, la ligne d'aide n'existe pas pour la mise en page */
+.sr-confirmable .sr-btn-sous {
+  display: none;
+}
+
+.sr-confirmable.sr-arme {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.sr-confirmable.sr-arme .sr-btn-label {
+  color: var(--sr-red, #ff3b3b);
+}
+
+.sr-confirmable .sr-btn-compte {
+  display: none;
+}
+
+.sr-confirmable.sr-arme .sr-btn-compte {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--sr-red, #ff3b3b);
+  transform-origin: left center;
+  animation: sr-compte var(--duree, 3s) linear forwards;
+}
+
+@keyframes sr-compte {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+.sr-confirmable.sr-arme .sr-btn-sous {
+  display: block;
+  font: 400 0.75rem/1.2 var(--sr-mono);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--pile-doux, #c9d6cf);
+}
+
+/* § E5.X4 (audit F2, Femz 22/11 « go pour l'étape ») : armé, le bouton est presque toujours sous la souris — la barre
+   jaune du survol écrasait le rouge (libellé noir) et l'aide gris clair sur jaune tombait à 1,24:1. Armé = barre ROUGE
+   pleine (#c8102e), tout le texte en blanc (5,9:1), filet de décompte blanc. */
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn.sr-confirmable.sr-arme::before,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn.sr-confirmable.sr-arme:hover::before {
+  background: #c8102e;
+  transform: scaleX(1);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn.sr-confirmable.sr-arme,
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn.sr-confirmable.sr-arme:hover,
+.sr-confirmable.sr-arme .sr-btn-label,
+.sr-confirmable.sr-arme .sr-btn-sous {
+  color: #ffffff;
+  text-shadow: 0 1px 0 rgba(7, 11, 16, 0.55);
+}
+
+.sr-confirmable.sr-arme .sr-btn-compte {
+  background: #ffffff;
+}
+
+/* =====================================================================================================================
+   § E5.R FENÊTRE PARAMÈTRES (Femz, 21/11 : « réglage ouvre vers une autre fenêtre, met notre nouvelle DA UI glow, je
+   veux un truc vraiment propre au goût du jour ») — plein écran sur la planche système, comme le Noyau : titre,
+   onglets en mots (souligné vert = ouvert), une PLAQUE GLOW par réglage (nom en Determination, une ligne d'aide en
+   Mister Pixel 16, le contrôle à droite), « Retour » en bas. Le choix actif est une plaque glow cyan (= l'état) ; les volumes,
+   un filet cyan qui luit. Un seul jaune : le focus clavier. Sans filter (ui.test H) : recette du look glow v2.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-param {
+  --c-etat: var(--sr-cyan, #3fe0d0);
+  --c-ligne: #9fb2bf;
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 2.6rem var(--pile-gauche) 1.8rem;
+  background: var(--pile-planche);
+  image-rendering: pixelated;
+  pointer-events: auto;
+  animation: sr-param-entree 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes sr-param-entree {
+  from { opacity: 0; transform: translateY(0.6rem); }
+  to { opacity: 1; transform: none; }
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-tete h2 {
+  margin: 0 0 1.1rem;
+  font: 400 2.6rem/1 var(--sr-mono);
+  letter-spacing: 0.03em;
+  color: var(--pile-texte);
+  text-shadow: 0 0 1.2rem color-mix(in srgb, var(--c-etat) 22%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-onglets {
+  display: flex;
+  gap: 1.8rem;
+  border-bottom: 1px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-onglet {
+  padding: 0.45rem 0 0.55rem;
+  border: 0;
+  background: none;
+  font: 400 0.95rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+  cursor: pointer;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-onglet:hover,
+:root[data-sr-theme='carte-mere'] .sr-param-onglet.sr-actif {
+  color: var(--pile-texte);
+  box-shadow: inset 0 -0.15rem 0 var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-corps {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.8rem 1.4rem 1rem 0.2rem;
+  scrollbar-width: thin;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-section {
+  display: grid;
+  gap: 1.15rem;
+  max-width: 56rem;
+}
+
+/* ---- une ligne = une plaque glow (biseau, filet 2 px sourd, lueur douce ; au survol la lueur monte) ---- */
+:root[data-sr-theme='carte-mere'] .sr-param-ligne {
+  --c: var(--c-ligne);
+  --b: 0.75rem;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
+  align-items: center;
+  gap: 1.5rem;
+  min-height: 4.4rem;
+  padding: 0.9rem 1.4rem 0.9rem 1.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-ligne::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c) 34%, transparent), inset 0 0 1.4rem color-mix(in srgb, var(--c) 7%, transparent);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1px), color-mix(in srgb, var(--c) 34%, transparent) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 1px), color-mix(in srgb, var(--c) 34%, transparent) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(var(--c), var(--c)) left calc(var(--b) + 0.6rem) top 0.4rem / 2.2rem 2px no-repeat,
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 9%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 50%, rgba(8, 13, 19, 0.92) 100%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-ligne::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -2;
+  pointer-events: none;
+  background: var(--c);
+  opacity: 0.22;
+  -webkit-mask-box-image: var(--glow-masque) 22 fill / calc(var(--b) * 2.2) stretch;
+  transition: opacity 0.18s;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-ligne:hover::after {
+  opacity: 0.55;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-nom {
+  font: 400 1.05rem/1.1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-aide {
+  margin-top: 0.35rem;
+  font: 400 0.85rem/1.35 var(--sr-text);
+  color: var(--pile-gris);
+}
+
+/* les contrôles gardent leur logique ; dans la fenêtre, leur libellé est celui de la plaque (et aucune touche) */
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-label,
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-key,
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider-label {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam {
+  display: block;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-seg {
+  display: grid;
+  grid-template-columns: repeat(var(--nopt, 3), 1fr);
+  gap: 0.5rem;
+}
+
+/* ---- choix : plaques biseautées ; l'actif = plaque glow cyan pleine (filet + lueur masqués, recette v2) ---- */
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-opt {
+  --c: var(--c-ligne);
+  --b: 0.45rem;
+  position: relative;
+  isolation: isolate;
+  min-height: 2.5rem;
+  padding: 0 0.5rem;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font: 400 0.85rem/1 var(--sr-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-opt::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 0.7px), color-mix(in srgb, var(--c) 40%, transparent) calc(50% - 0.7px) calc(50% + 0.7px), transparent calc(50% + 0.7px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 0.7px), color-mix(in srgb, var(--c) 40%, transparent) calc(50% - 0.7px) calc(50% + 0.7px), transparent calc(50% + 0.7px)) right bottom / var(--b) var(--b) no-repeat,
+    rgba(7, 11, 16, 0.6);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-opt:hover {
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-opt.sr-on {
+  --c: var(--c-etat);
+  color: var(--pile-nuit);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-opt.sr-on::before {
+  box-shadow: inset 0 0 0 2px var(--c);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 1px), var(--c) calc(50% - 1px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, var(--c) calc(50% + 1px), transparent calc(50% + 1px)) right bottom / var(--b) var(--b) no-repeat,
+    linear-gradient(160deg, var(--sr-cyan-hi, #8df2e7) 0%, var(--c) 60%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-cam-opt.sr-on::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--b) * -1.2);
+  z-index: -2;
+  pointer-events: none;
+  background: var(--c);
+  opacity: 0.85;
+  -webkit-mask-box-image: var(--glow-masque) 22 fill / calc(var(--b) * 2.2) stretch;
+}
+
+/* ---- volumes : filet de 2 px, part remplie en cyan qui luit, curseur biseauté ---- */
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider {
+  display: grid;
+  grid-template-columns: 1fr 3.4rem;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input {
+  order: 1;
+  width: 100%;
+  height: 1.6rem;
+  margin: 0;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider-value {
+  order: 2;
+  text-align: right;
+  font: 400 0.95rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input::-webkit-slider-runnable-track {
+  height: 2px;
+  background: linear-gradient(to right, var(--c-etat) 0 var(--v, 50%), color-mix(in srgb, var(--c-ligne) 35%, transparent) var(--v, 50%) 100%);
+  box-shadow: 0 0 0.5rem color-mix(in srgb, var(--c-etat) 45%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-top: calc(-0.45rem + 1px);
+  border: 0;
+  background: var(--c-etat);
+  clip-path: polygon(0.28rem 0, 100% 0, 100% calc(100% - 0.28rem), calc(100% - 0.28rem) 100%, 0 100%, 0 0.28rem);
+  box-shadow: 0 0 0.6rem var(--c-etat);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input::-moz-range-track {
+  height: 2px;
+  background: color-mix(in srgb, var(--c-ligne) 35%, transparent);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input::-moz-range-progress {
+  height: 2px;
+  background: var(--c-etat);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input::-moz-range-thumb {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--c-etat);
+  box-shadow: 0 0 0.6rem var(--c-etat);
+}
+
+/* ---- onglet Commandes : le bloc des touches de la pause, posé sur une plaque ---- */
+:root[data-sr-theme='carte-mere'] .sr-param-commandes .sr-pli-touches {
+  max-width: 56rem;
+}
+
+/* ---- pied : « Retour » comme au Noyau ---- */
+:root[data-sr-theme='carte-mere'] .sr-param-pied {
+  display: flex;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-pied .sr-btn {
+  min-width: 0;
+  padding: 0.5rem 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font: 400 1.05rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-pied .sr-btn::before,
+:root[data-sr-theme='carte-mere'] .sr-param-pied .sr-btn::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param-pied .sr-btn:hover {
+  color: var(--pile-texte);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-sr-theme='carte-mere'] .sr-param {
+    animation: none;
+  }
+}
+
+/* § E5.R : volumes — le pourcentage À DROITE du filet (la règle de base met le curseur sur toute la ligne) */
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider input {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-slider-value {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* § E5.R : onglet Commandes — touches en petites plaques biseautées, la touche en attente (capture) en cyan qui luit ;
+   groupes et en-têtes en vert sourd ; « Touches par défaut » comme un choix non actif */
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touche {
+  --b: 0.35rem;
+  position: relative;
+  border: 0;
+  border-radius: 0;
+  --k: color-mix(in srgb, var(--c-ligne) 40%, transparent);
+  background:
+    linear-gradient(135deg, transparent calc(50% - 0.7px), var(--k) calc(50% - 0.7px) calc(50% + 0.7px), transparent calc(50% + 0.7px)) left top / var(--b) var(--b) no-repeat,
+    linear-gradient(135deg, transparent calc(50% - 0.7px), var(--k) calc(50% - 0.7px) calc(50% + 0.7px), transparent calc(50% + 0.7px)) right bottom / var(--b) var(--b) no-repeat,
+    rgba(7, 11, 16, 0.65);
+  box-shadow: inset 0 0 0 1px var(--k);
+  clip-path: polygon(var(--b) 0, 100% 0, 100% calc(100% - var(--b)), calc(100% - var(--b)) 100%, 0 100%, 0 var(--b));
+  font: 400 0.85rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touche:hover {
+  --k: color-mix(in srgb, var(--c-etat) 75%, transparent);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touche.sr-attente {
+  --k: var(--c-etat);
+  background: var(--c-etat);
+  color: var(--pile-nuit);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touches-groupe,
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touches-th {
+  color: var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touches-defaut {
+  min-width: 0;
+  padding: 0.55rem 1rem;
+  border: 0;
+  background: rgba(7, 11, 16, 0.65);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-ligne) 45%, transparent);
+  clip-path: polygon(0.45rem 0, 100% 0, 100% calc(100% - 0.45rem), calc(100% - 0.45rem) 100%, 0 100%, 0 0.45rem);
+  font: 400 0.85rem/1 var(--sr-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touches-defaut::before,
+:root[data-sr-theme='carte-mere'] .sr-param .sr-touches-defaut::after {
+  content: none;
+}
+
+/* § E5.W (Femz, 21/11 : « on voit leur version pixelisée et ça fait cheap ») — Noyau : le modèle de l'agent choisi est en
+   lecture. Jamais l'image pixel : le dernier rendu 3D s'efface (opacité), une ligne de scan descend le cadre (transform),
+   « Chargement » en libellé FUI discret (data-attente, texte de config.js) ; le portrait 3D revient en fondu. Même cadre
+   que le portrait 3D (15 × 21 rem) : rien ne bouge autour quand il arrive. */
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente .sr-fiche-fig {
+  display: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente .sr-fiche-3d {
+  display: block;
+  width: 15rem;
+  height: 21rem;
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-3d .sr-fiche-3d {
+  transition: opacity 0.25s ease-out;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::before {
+  content: '';
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--pile-vert), transparent);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: sr-attente-scan 1.6s linear infinite;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::after {
+  content: attr(data-attente);
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2.5rem;
+  text-align: center;
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-doux);
+  pointer-events: none;
+  animation: sr-attente-pouls 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes sr-attente-scan {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(21rem);
+  }
+}
+
+@keyframes sr-attente-pouls {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::before {
+    animation: none;
+    transform: translateY(10.5rem);
+  }
+
+  :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::after {
+    animation: none;
+    opacity: 0.75;
+  }
+}
+
+/* =====================================================================================================================
+   POLICES (Femz, 21/11 : « utilise mister_pixel_16 pour tous les blocs de textes explicatifs, garde l'autre police pixel
+   pour le reste (titres, accents, niveaux) ») — les PHRASES passent en Mister Pixel 16 (--sr-text) ; titres, noms,
+   étiquettes, chiffres et niveaux restent en Determination (--sr-mono / --sr-display). Liste explicite : le thème Pile
+   avait passé presque tout en Determination.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] :is(
+  .sr-lead, .sr-card-flav, .sr-card-desc, .sr-detail-effet, .sr-wdesc, .sr-wchoix-phrase, .sr-shop-explique,
+  .sr-consigne, .sr-pause-fige, .sr-param-aide, .sr-notes-ligne, .sr-infos-rule, .sr-acard-cond-txt,
+  .sr-hub-fiche-desc, .sr-hub-vente-desc, .sr-hub-succes-txt, .sr-hub-synth-txt, .sr-fiche-passif-txt,
+  .sr-touches-statut, .sr-touches-garde
+) {
+  font-family: var(--sr-text) !important; /* liste explicite : des règles plus précises du thème Pile fixent Determination */
+  letter-spacing: 0;
+}
+
+/* les chiffres des cartes restent des accents (Determination), sous la phrase en Mister Pixel 16 */
+:root[data-sr-theme='carte-mere'] .sr-card-desc .sr-card-stat {
+  font-family: var(--sr-mono) !important;
+}
+
+/* § E5.X4 (audit F1, Femz 22/11 « go pour l'étape ») : un bilan rempli (8 vagues, 5 armes, 2 succès) faisait 1 618 px pour
+   1 440 visibles — « Rejouer » / « Menu » sous le bord, sans rien qui le dise. La rangée colle au bas de l'écran (l'écran
+   .sr-screen défile : sticky), sur un dégradé sombre ; le bilan défile derrière. */
+:root[data-sr-theme='carte-mere'] .sr-gameover .sr-over-boutons {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin-top: 0.6rem;
+  padding: 1.1rem 0 1rem;
+  background: linear-gradient(180deg, rgba(8, 13, 19, 0) 0%, rgba(8, 13, 19, 0.94) 40%, #080d13 100%);
+}

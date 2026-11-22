@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CTRL+Z</title>
+    <!-- Ancre : sans cette icône vide le navigateur demande /favicon.ico (404 = erreur de console). -->
+    <link rel="icon" href="data:," />
+    <!-- Écran de chargement (§ E5.J) : fond et police demandés en premier, avant le programme du jeu. -->
+    <link rel="preload" href="assets/ui/chargement-fond.webp" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="preload" href="assets/polices/Determination.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="assets/polices/MisterPixel16.ttf" as="font" type="font/ttf" crossorigin />
+    <style>
+      /* Écran de chargement (ARCHITECTURE.md § E5.J). En ligne : affiché avant toute feuille de style et tout script.
+         Unité --u = 1 px à 1280 × 720, 2 px à 2560 × 1440 (comme la base de 16 px des rem de ui.js). Palette de la DA carte mère (ui.css, --ca-*). */
+      @font-face {
+        font-family: 'SR Chargement';
+        src: url('assets/polices/Determination.ttf') format('truetype');
+        font-display: block;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #070b10;
+      }
+      .sr-ch {
+        --u: max(0.8px, min(calc(100vh / 720), calc(100vw / 1280)));
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        overflow: hidden;
+        background: #070b10;
+        color: #e9dcff;
+        font-family: 'SR Chargement', ui-monospace, Menlo, Consolas, monospace;
+        transition: opacity 0.35s ease-out;
+        -webkit-font-smoothing: none;
+      }
+      .sr-ch-sortie {
+        opacity: 0;
+        pointer-events: none;
+      }
+      /* Fond : vignette floue (en ligne, 0,25 Ko) sous l'image validée, en « cover », jamais déformée. */
+      .sr-ch-fond {
+        position: absolute;
+        inset: 0;
+        background:
+          url('assets/ui/chargement-fond.webp') center / cover no-repeat,
+          url('data:image/webp;base64,UklGRtYAAABXRUJQVlA4IMoAAABwBQCdASogABIAPu1gqE2ppaOiMAgBMB2JYgCdMuu73ElrS+Io/ww9prGatp/gtJ5qBeGAAP7vYrzZ4a8u2MHGWoiEHKIMTJMHIYt+cVkUNvXQ6fIDsmlExegQTlyreOZl+UgU5Pd3ur/Br05p/SnioMIi0Y6Fh4oIBVDGo/q433BLXXw+bhzmzwZcmolH06r98rcvb+ysqxJD15Yad/MO8IWto77It3ysA8uLbqXUAPWAROudT7RZRTkh1DY2Tclp6l4vu9PUtwAA') center / cover no-repeat,
+          #070b10;
+      }
+      /* 20/11 : DA « Ligne HUD » accordée à l'illustration v8 (nuit violette, cyan des héros, orange du Shinobi, or du
+         logo) : pas de boîte, une barre fine à segments, du texte discret — l'image respire. */
+      .sr-ch-voile {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to bottom, rgba(8, 4, 16, 0.5) 0%, rgba(8, 4, 16, 0) 22%, rgba(8, 4, 16, 0) 70%, rgba(8, 4, 16, 0.85) 100%);
+      }
+      .sr-ch-logo {
+        position: absolute;
+        left: 50%;
+        /* dans la bande calme du haut de l'image (plus petit que celui du titre, qui masquerait les agents) */
+        top: calc(14 * var(--u));
+        width: min(calc(400 * var(--u)), calc(100vw - 64 * var(--u)));
+        aspect-ratio: 1994 / 665;
+        transform: translateX(-50%);
+        background: url('assets/ui/chargement-logo.webp') center / contain no-repeat;
+      }
+      .sr-ch-bas {
+        position: absolute;
+        left: 50%;
+        bottom: calc(26 * var(--u));
+        width: min(calc(860 * var(--u)), 92vw);
+        box-sizing: border-box;
+        transform: translateX(-50%);
+      }
+      .sr-ch-ligne {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: calc(12 * var(--u));
+        font-size: calc(14 * var(--u));
+        line-height: 1.2;
+        color: #e9dcff;
+        text-shadow: var(--u) var(--u) 0 #080410;
+      }
+      .sr-ch-etat::before {
+        content: '▸ ';
+        color: #4fe3ff;
+      }
+      .sr-ch-etat::after {
+        content: '_';
+        color: #4fe3ff;
+        animation: sr-ch-curseur 1s steps(2, jump-none) infinite;
+      }
+      .sr-ch-pct {
+        color: #ffd23f;
+        font-variant-numeric: tabular-nums;
+      }
+      .sr-ch-barre {
+        position: relative;
+        margin-top: calc(6 * var(--u));
+        height: calc(6 * var(--u));
+        background: rgba(42, 24, 64, 0.85);
+        box-shadow: 0 0 0 var(--u) rgba(8, 4, 16, 0.9);
+      }
+      .sr-ch-piste {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+        background: linear-gradient(180deg, #b8f6ff 0 34%, #4fe3ff 34% 100%);
+        box-shadow: 0 0 calc(6 * var(--u)) rgba(79, 227, 255, 0.5);
+      }
+      /* la partie non chargée glisse (translateX piloté par src/chargement.js) ; tête orange au front de progression */
+      .sr-ch-cache {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: #2a1840;
+        border-left: calc(3 * var(--u)) solid #ff8a1c;
+        transform: translateX(0%);
+      }
+      /* grille de segments FIXE par-dessus : elle ne bouge pas avec le cache, les segments restent alignés */
+      .sr-ch-piste::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        background: repeating-linear-gradient(90deg, transparent 0 calc(4 * var(--u)), rgba(8, 4, 16, 0.9) calc(4 * var(--u)) calc(5 * var(--u)));
+      }
+      .sr-ch-etat {
+        flex: 1;
+      }
+      /* 20/11 (testeur Windows resté 2 min à « 0 % ») : la barre VIT toujours. Un reflet balaie la piste en boucle :
+         animation de transform seule, jouée par le compositeur — elle continue même quand le fil principal de la page
+         est bloqué (compilation des shaders par la carte graphique), là où le pourcentage, lui, ne peut plus bouger. */
+      .sr-ch-balayage {
+        position: absolute;
+        z-index: 3;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 22%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55) 50%, transparent);
+        will-change: transform;
+        animation: sr-ch-balayage 1.5s linear infinite;
+        pointer-events: none;
+      }
+      /* message de patience : écrit par src/chargement.js dès le départ (avant tout blocage), il apparaît seul au bout
+         de 5 s par une animation d'opacité (compositeur, elle aussi) — rien à faire au moment où la page serait figée */
+      .sr-ch-patience {
+        margin: calc(8 * var(--u)) 0 0;
+        font-size: calc(12 * var(--u));
+        line-height: 1.35;
+        color: #c9b8ee;
+        text-align: center;
+        text-shadow: var(--u) var(--u) 0 #080410;
+        opacity: 0;
+        will-change: opacity;
+        animation: sr-ch-patience 0.6s ease-out 5s forwards;
+      }
+      .sr-ch-patience:empty {
+        display: none;
+      }
+      @keyframes sr-ch-balayage {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(460%);
+        }
+      }
+      @keyframes sr-ch-patience {
+        to {
+          opacity: 1;
+        }
+      }
+      .sr-ch-detail {
+        font-size: calc(12 * var(--u));
+        color: #9a88c4;
+        font-variant-numeric: tabular-nums;
+      }
+      .sr-ch-astuce {
+        margin: calc(8 * var(--u)) 0 0;
+        font-size: calc(12 * var(--u));
+        line-height: 1.35;
+        color: #e9dcff;
+        text-align: center;
+        text-shadow: var(--u) var(--u) 0 #080410;
+        min-height: 1.35em;
+      }
+      .sr-ch-astuce-tag {
+        display: inline-block;
+        margin-right: calc(8 * var(--u));
+        padding: 0 calc(4 * var(--u));
+        border: var(--u) solid #ff8a1c;
+        color: #ff8a1c;
+        font-size: calc(11 * var(--u));
+      }
+      .sr-ch-astuce-entre .sr-ch-astuce-texte {
+        display: inline-block;
+        animation: sr-ch-entree 0.3s ease-out both;
+      }
+      .sr-ch-erreur,
+      .sr-ch-secours {
+        margin-top: calc(10 * var(--u));
+        font-size: calc(13 * var(--u));
+        line-height: 1.4;
+        text-align: center;
+        color: #e9dcff;
+        text-shadow: var(--u) var(--u) 0 #080410;
+      }
+      .sr-ch-erreur-titre {
+        margin: 0 0 calc(4 * var(--u));
+        color: #ff3b4a;
+        font-size: calc(16 * var(--u));
+      }
+      .sr-ch-erreur-texte {
+        margin: 0 0 calc(10 * var(--u));
+      }
+      .sr-ch-erreur button {
+        margin: 0 calc(5 * var(--u));
+        padding: calc(5 * var(--u)) calc(12 * var(--u));
+        font: inherit;
+        font-size: calc(13 * var(--u));
+        color: #4fe3ff;
+        background: rgba(20, 12, 38, 0.9);
+        border: calc(2 * var(--u)) solid #4fe3ff;
+        text-shadow: none;
+        cursor: pointer;
+      }
+      .sr-ch-erreur button.sr-ch-recharger {
+        border-color: #ff8a1c;
+        color: #ff8a1c;
+      }
+      .sr-ch-erreur button:hover,
+      .sr-ch-erreur button:focus-visible {
+        background: #4fe3ff;
+        color: #080410;
+        outline: none;
+      }
+      .sr-ch-erreur button.sr-ch-recharger:hover,
+      .sr-ch-erreur button.sr-ch-recharger:focus-visible {
+        background: #ff8a1c;
+      }
+      .sr-ch-secours {
+        display: none;
+        color: #ff3b4a;
+      }
+      .sr-ch-echec-script .sr-ch-secours {
+        display: block;
+      }
+      .sr-ch-en-erreur .sr-ch-astuce,
+      .sr-ch-en-erreur .sr-ch-patience,
+      .sr-ch-en-erreur .sr-ch-balayage,
+      .sr-ch-echec-script .sr-ch-balayage,
+      .sr-ch-en-erreur .sr-ch-etat::after {
+        display: none;
+      }
+      @keyframes sr-ch-curseur {
+        0% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+      @keyframes sr-ch-entree {
+        from {
+          opacity: 0;
+          transform: translateY(calc(4 * var(--u)));
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .sr-ch {
+          transition-duration: 0.15s;
+        }
+        .sr-ch-etat::after {
+          animation: none;
+        }
+        .sr-ch-astuce-entre .sr-ch-astuce-texte {
+          animation: none;
+        }
+        .sr-ch-balayage {
+          animation-duration: 4s; /* mouvement réduit : plus lent, jamais figé (sinon « il ne se passe rien ») */
+        }
+      }
+    </style>
+    <script>
+      // § E5.J : un script du jeu introuvable (réseau, CDN de three) est noté dès maintenant ; src/chargement.js l'affiche,
+      // ou, s'il n'a pas pu s'exécuter lui-même, le message de secours de l'écran apparaît.
+      window.__srCh = { erreurs: [] };
+      addEventListener(
+        'error',
+        function (e) {
+          var t = e.target;
+          if (!t || t === window || (t.tagName !== 'SCRIPT' && t.tagName !== 'LINK')) return;
+          window.__srCh.erreurs.push(t.src || t.href || '?');
+          if (window.__srCh.signaler) window.__srCh.signaler();
+          else {
+            var r = document.getElementById('chargement');
+            if (r) r.classList.add('sr-ch-echec-script');
+          }
+        },
+        true,
+      );
+    </script>
+    <!-- Ancre : three épinglé, chargé par importmap depuis jsDelivr. Aucune étape de build. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <!-- Écran de chargement (§ E5.J) : peint avant la feuille de style du jeu, retiré en fondu quand le titre est prêt. -->
+    <div id="chargement" class="sr-ch" aria-busy="true">
+      <div class="sr-ch-fond"></div>
+      <div class="sr-ch-voile"></div>
+      <div class="sr-ch-logo" role="img" aria-label="CTRL+Z"></div>
+      <div class="sr-ch-bas">
+        <div class="sr-ch-ligne">
+          <span class="sr-ch-etat" role="status"><span class="sr-ch-etat-texte">Chargement…</span></span>
+          <span class="sr-ch-detail">&nbsp;</span>
+          <span class="sr-ch-pct">0 %</span>
+        </div>
+        <div class="sr-ch-barre" role="progressbar" aria-label="Chargement du jeu" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="sr-ch-piste"><div class="sr-ch-cache"></div><div class="sr-ch-balayage"></div></div>
+        </div>
+        <p class="sr-ch-patience"></p>
+        <p class="sr-ch-astuce" hidden><span class="sr-ch-astuce-tag">ASTUCE</span><span class="sr-ch-astuce-texte"></span></p>
+        <div class="sr-ch-erreur" role="alert" hidden>
+          <p class="sr-ch-erreur-titre"></p>
+          <p class="sr-ch-erreur-texte"></p>
+          <button type="button" class="sr-ch-recharger"></button><button type="button" class="sr-ch-continuer"></button>
+        </div>
+        <p class="sr-ch-secours">Le jeu n’a pas pu être téléchargé. Vérifiez votre connexion, puis rechargez la page.</p>
+      </div>
+    </div>
+    <!-- Ancre : le rendu du jeu. -->
+    <canvas id="game"></canvas>
+    <!-- Ancre : racine des calques de l'interface (HUD, écrans). Le lot ui écrit à l'intérieur. -->
+    <div id="ui-root"></div>
+    <!-- Ancre : feuille de style de l'interface (lot ui). Dans le corps, après l'écran de chargement : elle ne retarde
+         plus son premier affichage (§ E5.J). -->
+    <link rel="stylesheet" href="ui.css" />
+    <!-- menus « Pile » (choix de Femz du 19/11) : liste à gauche, barre jaune, fiche sur Tab ; après ui.css, qu'elle surcharge -->
+    <link rel="stylesheet" href="src/ui-pile.css" />
+    <!-- Écran de chargement : exécuté avant src/main.js (ordre du document). -->
+    <script type="module" src="src/chargement.js"></script>
+    <!-- Ancre : point d'entrée du jeu. -->
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
