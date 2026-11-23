@@ -4077,3 +4077,21 @@
     animation: none;
   }
 }
+
+/* § E5.AQ : look pixel CRT « plein » de la vitrine (VITRINE.crt, variante à plein: true) — lignes de balayage sur le décor
+   peint aussi (sous l'agent, qui porte les siennes ; jamais sur les textes). Calque fixe : rien par image. */
+:root[data-sr-vitrine-crt] .sr-accueil-fond::after,
+:root[data-sr-vitrine-crt] .sr-ae-fiche .sr-ae-fiche-fond::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* même profil que les lignes de l'agent (src/pause-agent.js, CRT_FRAG) : sombre sur la rangée kP (centre à kP + 0,5 px,
+     compté depuis le haut de l'écran), clair à mi-période — une seule trame sur l'agent et sur le décor */
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(0, 0, 0, var(--sr-vitrine-crt-a, 0.3)) 0.5px,
+    rgba(0, 0, 0, 0) calc(var(--sr-vitrine-crt-p, 4px) / 2 + 0.5px),
+    rgba(0, 0, 0, var(--sr-vitrine-crt-a, 0.3)) calc(var(--sr-vitrine-crt-p, 4px) + 0.5px)
+  );
+}

@@ -7414,6 +7414,9 @@ export const IDLES_AGENTS = {
 // sol : halo de lumière du projecteur + ombre de contact (aucun cercle) — maquette-B5.html (flaque, sol) : alpha =
 // force × (1 − r / rayon)^puissance, r elliptique (écrasement en profondeur), halo avancé de « avance » m vers la caméra ;
 // une flaque plus noire sous chaque pied (os pied_*) ; alphaMax garde le sol sous l'alpha des pixels de l'agent.
+// § E5.AQ : variante « Jeu » du look pixel CRT de la vitrine (le CRT de la partie, PEINT.crt 7) — partagée par la variante
+// « Jeu + Tube » choisie par Femz le 23/11 (VITRINE.crt), sans copie
+const VITRINE_CRT_JEU = { nom: 'Jeu', pixel: 2, scan: 0.3, scanPx: 4, ligne: 'cos', mask: 0, chroma: 0.8, lueur: 0, niveaux: 0, plein: false };
 export const VITRINE = {
   // Tâche 4 : fonds peints (outils/fonds_webp.py : 4K → WebP 2560 × 1440, recadrés 16:9) et cartes de la grille PRÉCALCULÉES
   // (outils/portraits_agents.mjs --cartes : 520 × 740, agent de la vitrine cadre fiche, lum-b5, posé sur le fond de l'écran
@@ -7512,6 +7515,37 @@ export const VITRINE = {
     flaque: { x: 1770 / 2560, y: 1165 / 1440, largeur: 880 / 2560, hauteur: 110 / 1440, force: 0.42 },
   },
   poussiere: { nombre: 42, taille: 3.4, vitesse: 0.011, opacite: 1, ambiante: 0.15, vie: [6, 13], zone: [0.47, 0.93, 0.86] },
+  //#region e5:AQ-crt-vitrine
+  // § E5.AQ — Femz, 23/11 : « il faut un look pixel CRT (propose en plusieurs) » pour l'agent 3D de l'écran titre, du
+  // Noyau et de la fiche. PROPOSITIONS, aucune imposée : actif = numéro de la variante (0 = rendu net d'avant) ;
+  // ?vitrineCrt=N dans l'adresse l'emporte (prévis) ; __game.vitrineCrt(N) en debug. Une passe GPU de plus sur la seule
+  // région de l'agent (src/pause-agent.js) : l'agent est rendu en basse définition (un texel = un gros pixel) puis
+  // recopié par un quadrilatère qui pose les lignes, la grille RVB, l'aberration, la lueur, la postérisation.
+  //   pixel : côté d'un gros pixel (px d'écran) · scan : force des lignes (0..1) · scanPx : leur période (px d'écran) · ligne : 'cos' (comme le jeu) ou
+  //   'gauss' (profil de l'écran de chargement, docs/chargement/v9-refs/crt.py) · mask : grille d'ouverture RVB (0..1) ·
+  //   chroma : aberration rouge / bleu (px d'écran) · lueur : halo des phosphores (0..1) · niveaux : postérisation tramée
+  //   (niveaux par canal, 0 = aucune) · plein : lignes aussi sur TOUT l'écran (fond peint compris, calque CSS fixe)
+  // plein : les lignes du décor (calque CSS) ont la même période et la même phase (comptées depuis le haut de l'écran)
+  // et le même profil (sombre au joint, clair au milieu) que celles de l'agent : une seule trame, pas de moiré.
+  // 23/11 : Femz choisit « Jeu avec Tube » → variante 5, PAR DÉFAUT (titre, Noyau, fiche).
+  crt: {
+    actif: 5,
+    variantes: [
+      null,
+      // 1 — « Jeu » : exactement le CRT de la partie (PEINT.crt variante 7, validée par Femz le 15/11)
+      VITRINE_CRT_JEU,
+      // 2 — « Chargement » : la cellule de l'écran de chargement v8 / v9 (crt.py « 4 px » sur 1672 px ≈ 6 px à 2560),
+      // triades RVB, ligne gaussienne par rangée, lueur
+      { nom: 'Chargement', pixel: 6, scan: 0.55, scanPx: 6, ligne: 'gauss', mask: 0.45, chroma: 1.2, lueur: 0.12, niveaux: 64, plein: false },
+      // 3 — « 16 bits » : pixel art (gros pixels de 3 px, 24 niveaux tramés), lignes discrètes
+      { nom: '16 bits', pixel: 3, scan: 0.15, scanPx: 3, ligne: 'cos', mask: 0, chroma: 0, lueur: 0, niveaux: 24, plein: false },
+      // 4 — « Tube » : le jeu + grille RVB, lueur, et les lignes sur tout l'écran (agent et décor peint dans le même tube)
+      { nom: 'Tube', pixel: 2, scan: 0.3, scanPx: 4, ligne: 'cos', mask: 0.3, chroma: 1.2, lueur: 0.25, niveaux: 0, plein: true },
+      // 5 — « Jeu + Tube » (choix de Femz, 23/11) : l'agent de « Jeu », les lignes du décor de « Tube »
+      { ...VITRINE_CRT_JEU, nom: 'Jeu + Tube', plein: true },
+    ],
+  },
+  //#endregion
 };
 // Contraintes articulaires (retour de Femz du 17/11 au soir : « rajoute des contraintes au corps, là il se plie
 // inhumainement le dos ») : bornes des angles d'Euler de chaque os, DANS SON ORDRE (racine = bassin XYZ, buste YXZ :

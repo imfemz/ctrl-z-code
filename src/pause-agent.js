@@ -165,6 +165,8 @@ export function init(context) {
   window.addEventListener('resize', () => {
     N[4] = 1;
   });
+  brancherRotationVitrine(); // § E5.AQ
+  if (crtDuChargement() > 0) setCrtVitrine(crtDuChargement()); // § E5.AQ
   // § E4.L.3 : un module ES par adresse — cette cape ne partage aucun état avec celle du héros (cape.js) ni du titre
   import('./anim/cape.js?portrait').then(
     (m) => {
@@ -415,6 +417,7 @@ function construire(a, skin = SKIN_BASE) {
   mesh.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(list));
   mesh.frustumCulled = false;
+  piedsSommets(d); // § E5.AP
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -763,19 +766,583 @@ function poserCode(t, rot) {
  * Temps de la pause (h = 0 : T[0]) ou de la vitrine (h = 1 : VT[0]), passé par c.temps : aucun flottant en argument (§ V).
  */
 function poserCuit(c, h, verrou) {
+  //#region e5:AP-pieds-menus
+  // § E5.AP : en vitrine (verrou = 1), la hanche n'est plus clouée en x / z (les pieds glissaient de tout le balancement du
+  // bassin) : le x / z du clip est gardé, puis la correction précalculée (ancrerPieds) pose les pieds au sol et les y tient
+  if (verrou && (ancClip !== c || ancGeo !== geoPosee)) {
+    ANC_MS[0] = performance.now();
+    ancrerPieds(c);
+    ANC_MS[0] = performance.now() - ANC_MS[0]; // durée du précalcul (ms, tests) : une fois par clip et par modèle
+  }
+  //#endregion
   c.temps[0] = h === 1 ? VT[0] : T[0];
   c.echantillonner(null, os, oRacine, 0);
-  // Écran Agents : en vitrine, la hanche reste au-dessus des pieds du portrait (x = z = 0, hauteur du clip gardée) — l'idle
-  // « Offensive » de l'Éclaireur balance la racine de ± 0,2 m en x et sortait du cadre
-  if (verrou) {
-    oRacine.position.x = 0;
-    oRacine.position.z = 0;
-  }
+  hancheDuClip();
+  if (verrou) appliquerAncre(c); // § E5.AP
+}
+
+/** Racine et buste du squelette cuit (racine à la hanche, buste 8,3 cm au-dessus) ramenés sur ceux du portrait. */
+function hancheDuClip() {
   qV.set(0, HT[0], 0).applyQuaternion(oRacine.quaternion);
   oRacine.position.sub(qV);
   qV2.set(0, HT[1], 0).applyQuaternion(oBuste.quaternion);
   oBuste.position.set(-qV2.x, HT[1] - qV2.y, -qV2.z);
 }
+
+//#region e5:AP-pieds-menus
+// § E5.AP — pieds de la vitrine posés au sol. Correction de racine (dx, dy, dz) par image du clip de vitrine, précalculée
+// hors image sur les SOMMETS RÉELS des pieds (pièces pied_* et orteils_*, coordonnées dans le repère de leur os), puis lue
+// à chaque image entre deux images du clip. Tableaux préalloués : aucun objet créé, ni au précalcul ni par image.
+const ANC_MAX = 2048; // échantillons au plus (le plus long, Offensive Idle : 317 images × ANC_SUR = 1 268)
+// suréchantillonnage du précalcul : ANC_SUR échantillons par image du clip. À 1, l'écran à 60 i/s interpolait entre deux
+// images du clip (30 i/s) une IK qui n'est exacte qu'aux images : la pointe glissait jusqu'à 0,3 m/s (Fight Idle, mesuré)
+const ANC_SUR = 4;
+const ANC = new Float64Array(ANC_MAX * 3); // par image : dx, dy, dz (m, repère du maillage)
+// par image : bas g, bas d, centre x g, z g, x d, z d (sommets des pieds), hanche x, z (racine du clip)
+const ANC_B = new Float64Array(ANC_MAX * 8);
+const ANC_MS = new Float64Array(1); // durée du dernier précalcul (ms)
+const ANC_N = new Int32Array(1); // images de la correction (0 : aucune, l'ancien calage s'applique)
+// tests (inspect().vitrine.ancre), en m : [0] glissement résiduel max d'un pied posé (après correction), [1] excursion max
+// d'un pied posé avec le x / z du clip seul, [2] excursion max d'un pied posé hanche clouée (ancien calage), [3] bas des
+// pieds au-dessus du sol sans recalage (min), [4] (max), [5] balancement de la hanche après correction (écart max à 0)
+const ANC_INFO = new Float64Array(6);
+const ANC_POIDS = new Float64Array([0.01, 0.025]); // pied posé : à moins de [0] m au-dessus du plus bas (poids 1), 0 à [1]
+// référence d'un pied : centre de ses sommets à moins de ANC_ZONE m au-dessus de son point le plus bas. Mesuré (sonde) : une
+// zone de 1 cm glisse du talon à la pointe quand le pied se déroule, et la tenir fait glisser le pied (Shinobi : 0,146 m/s
+// au contact) ; le centre du pied ENTIER (pied rigide, orientation du clip) est la référence retenue
+const ANC_ZONE = 10;
+const ANC_L = new Float64Array(ANC_MAX * 2); // lissage de la correction horizontale (tampon)
+const ANC_W = new Float64Array(ANC_MAX * 2); // par image : poids « posé » g, d
+const ANC_P = new Float64Array(ANC_MAX * 4);
+const ANC_PH = new Int32Array(ANC_MAX * 2); // par image : numéro de la phase d'appui du pied g, d (−1 : levé)
+const PQ = new Float64Array(ANC_MAX * 8); // par image : orientation (monde, corps non tourné) du pied g, d — clip
+const PHQ = new Float64Array(ANC_MAX * 8); // par phase (numéro) : orientation moyenne du pied g, d pendant la phase
+const qPQ = new THREE.Quaternion(); // par image : ancre de la phase d'appui g (x, z), d (x, z) — repère du clip
+let ancClip = null;
+let ancGeo = null;
+// par pied (g, d) : [os, Float32Array des sommets (x, y, z dans le repère de l'os), os, …] — construire()
+const PIEDS_V = [[], []];
+
+/** Sommets des pieds dans le repère de leur os (inverse de liaison du squelette du portrait). Hors image (construire). */
+function piedsSommets(d) {
+  const pc = d.geometry.attributes.piece.array;
+  const pos = d.geometry.attributes.position.array;
+  const inv = mesh.skeleton.boneInverses;
+  const v = new THREE.Vector3();
+  for (let k = 0; k < 2; k++) {
+    PIEDS_V[k].length = 0;
+    for (const nom of ['pied_', 'orteils_']) {
+      const ip = d.pieces.findIndex((p) => p.nom === nom + 'gd'[k]);
+      if (ip < 0) continue;
+      let n = 0;
+      for (let i = 0; i < pc.length; i++) if (pc[i] === ip) n++;
+      const l = new Float32Array(n * 3);
+      let j = 0;
+      for (let i = 0; i < pc.length; i++) {
+        if (pc[i] !== ip) continue;
+        v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(inv[ip + 1]);
+        l[j++] = v.x;
+        l[j++] = v.y;
+        l[j++] = v.z;
+      }
+      PIEDS_V[k].push(os[nom + 'gd'[k]], l);
+    }
+  }
+  ancClip = null; // géométrie changée : correction à refaire
+}
+
+/**
+ * Pied k : bas (y min) et centre x, z de sa ZONE DE CONTACT (sommets à moins de ANC_ZONE m au-dessus de son bas : la
+ * semelle quand il est à plat, la pointe quand il se déroule), écrits dans ANC_B à l'offset o (o + k, o + 2 + 2k, o + 3 + 2k).
+ */
+function mesurerPied(k, o) {
+  const L = PIEDS_V[k];
+  let bas = 1e9;
+  for (let p = 0; p < L.length; p += 2) {
+    const e = L[p].matrixWorld.elements;
+    const l = L[p + 1];
+    for (let i = 0; i < l.length; i += 3) {
+      const wy = e[1] * l[i] + e[5] * l[i + 1] + e[9] * l[i + 2] + e[13];
+      if (wy < bas) bas = wy;
+    }
+  }
+  let sx = 0;
+  let sz = 0;
+  let n = 0;
+  for (let p = 0; p < L.length; p += 2) {
+    const e = L[p].matrixWorld.elements;
+    const l = L[p + 1];
+    for (let i = 0; i < l.length; i += 3) {
+      const x = l[i];
+      const y = l[i + 1];
+      const z = l[i + 2];
+      if (e[1] * x + e[5] * y + e[9] * z + e[13] > bas + ANC_ZONE) continue;
+      sx += e[0] * x + e[4] * y + e[8] * z + e[12];
+      sz += e[2] * x + e[6] * y + e[10] * z + e[14];
+      n++;
+    }
+  }
+  ANC_B[o + k] = bas;
+  ANC_B[o + 2 + 2 * k] = sx / n;
+  ANC_B[o + 3 + 2 * k] = sz / n;
+}
+
+/** Poids « posé » d'un pied à h m au-dessus du pied le plus bas (1 → 0 entre ANC_POIDS[0] et [1]). */
+function poidsPose(h) {
+  return h <= ANC_POIDS[0] ? 1 : h >= ANC_POIDS[1] ? 0 : (ANC_POIDS[1] - h) / (ANC_POIDS[1] - ANC_POIDS[0]);
+}
+
+/**
+ * Précalcul de la correction du clip c sur le squelette de la vitrine (§ E5.AP, point 2). Hors image : à l'ouverture, à
+ * l'arrivée de l'idle de vitrine, au changement d'agent. Pose le squelette image par image (corps non tourné : repère du
+ * maillage), mesure les pieds, puis : dy pose le plus bas sur y = 0 ; dx, dz tiennent les pieds posés sur leur ancre
+ * (moyenne de leur centre quand ils sont posés) ; constante : hanche à x = z = 0 en moyenne.
+ */
+function ancrerPieds(c) {
+  ancClip = c;
+  ancGeo = geoPosee;
+  ANC_N[0] = 0;
+  const n = c.n * ANC_SUR;
+  if (n >= ANC_MAX || n < 2 || PIEDS_V[0].length === 0 || PIEDS_V[1].length === 0) return;
+  const ry = mesh.rotation.y;
+  mesh.rotation.y = 0;
+  const t0 = c.temps[0];
+  for (let i = 0; i < n; i++) {
+    c.temps[0] = i / (c.fps * ANC_SUR);
+    c.echantillonner(null, os, oRacine, 0);
+    const o = i * 8;
+    ANC_B[o + 6] = oRacine.position.x; // hanche (point de hanche du clip)
+    ANC_B[o + 7] = oRacine.position.z;
+    hancheDuClip();
+    mesh.updateMatrixWorld(true);
+    mesurerPied(0, o);
+    mesurerPied(1, o);
+    for (let k = 0; k < 2; k++) {
+      const pd = os[k === 0 ? 'pied_g' : 'pied_d'];
+      if (!pd) continue;
+      pd.getWorldQuaternion(qPQ);
+      PQ[i * 8 + k * 4] = qPQ.x;
+      PQ[i * 8 + k * 4 + 1] = qPQ.y;
+      PQ[i * 8 + k * 4 + 2] = qPQ.z;
+      PQ[i * 8 + k * 4 + 3] = qPQ.w;
+    }
+  }
+  c.temps[0] = t0;
+  mesh.rotation.y = ry;
+  // ANCRES PAR PHASE D'APPUI : l'Offensive Idle de l'Éclaireur fait de vrais pas (pied levé jusqu'à 24 cm, reposé ailleurs) —
+  // une ancre fixe par pied tirait le pied reposé vers son ancienne place (11 cm, mesuré). Une phase = images consécutives
+  // (en boucle) où le pied a un poids > 0 ; son ancre = la moyenne pondérée de son centre sur la phase (repère du clip).
+  ANC_INFO[3] = 1e9;
+  ANC_INFO[4] = -1e9;
+  for (let i = 0; i < n; i++) {
+    const o = i * 8;
+    const b = ANC_B[o] < ANC_B[o + 1] ? ANC_B[o] : ANC_B[o + 1];
+    if (b < ANC_INFO[3]) ANC_INFO[3] = b;
+    if (b > ANC_INFO[4]) ANC_INFO[4] = b;
+    ANC_W[i * 2] = poidsPose(ANC_B[o] - b);
+    ANC_W[i * 2 + 1] = poidsPose(ANC_B[o + 1] - b);
+  }
+  for (let k = 0; k < 2; k++) {
+    // début de parcours : une image où le pied est levé (sinon toute la boucle est une seule phase, départ en 0)
+    let i0 = 0;
+    for (let i = 0; i < n; i++) {
+      if (ANC_W[i * 2 + k] === 0) {
+        i0 = i;
+        break;
+      }
+    }
+    let j = 0;
+    while (j < n) {
+      const i = (i0 + j) % n;
+      if (ANC_W[i * 2 + k] === 0) {
+        ANC_P[i * 4 + 2 * k] = 0;
+        ANC_P[i * 4 + 2 * k + 1] = 0;
+        ANC_PH[i * 2 + k] = -1;
+        j++;
+        continue;
+      }
+      // phase [j, j + l[ (indices en boucle depuis i0)
+      let l = 0;
+      let sx = 0;
+      let sz = 0;
+      let sw = 0;
+      while (j + l < n && ANC_W[((i0 + j + l) % n) * 2 + k] > 0) {
+        const q = (i0 + j + l) % n;
+        const w = ANC_W[q * 2 + k];
+        sx += w * ANC_B[q * 8 + 2 + 2 * k];
+        sz += w * ANC_B[q * 8 + 3 + 2 * k];
+        sw += w;
+        l++;
+      }
+      // orientation moyenne du pied sur la phase (quaternions alignés sur le 1er, pondérés, normalisés)
+      const q0 = ((i0 + j) % n) * 8 + k * 4;
+      let mx = 0, my = 0, mz = 0, mw = 0;
+      for (let m = 0; m < l; m++) {
+        const q = ((i0 + j + m) % n) * 8 + k * 4;
+        const w = ANC_W[((i0 + j + m) % n) * 2 + k];
+        const sg = PQ[q] * PQ[q0] + PQ[q + 1] * PQ[q0 + 1] + PQ[q + 2] * PQ[q0 + 2] + PQ[q + 3] * PQ[q0 + 3] < 0 ? -w : w;
+        mx += sg * PQ[q];
+        my += sg * PQ[q + 1];
+        mz += sg * PQ[q + 2];
+        mw += sg * PQ[q + 3];
+      }
+      const ml = Math.sqrt(mx * mx + my * my + mz * mz + mw * mw) || 1;
+      const ph = (i0 + j) % n; // numéro de la phase : sa 1re image
+      PHQ[ph * 8 + k * 4] = mx / ml;
+      PHQ[ph * 8 + k * 4 + 1] = my / ml;
+      PHQ[ph * 8 + k * 4 + 2] = mz / ml;
+      PHQ[ph * 8 + k * 4 + 3] = mw / ml;
+      for (let m = 0; m < l; m++) {
+        const q = (i0 + j + m) % n;
+        ANC_P[q * 4 + 2 * k] = sx / sw;
+        ANC_P[q * 4 + 2 * k + 1] = sz / sw;
+        ANC_PH[q * 2 + k] = ph;
+      }
+      j += l;
+    }
+  }
+  let h0 = 0;
+  let h1 = 0;
+  for (let i = 0; i < n; i++) {
+    const o = i * 8;
+    const p0 = ANC_W[i * 2];
+    const p1 = ANC_W[i * 2 + 1];
+    const s = p0 + p1; // ≥ 1 : le pied le plus bas a le poids 1
+    ANC[i * 3] = (p0 * (ANC_P[i * 4] - ANC_B[o + 2]) + p1 * (ANC_P[i * 4 + 2] - ANC_B[o + 4])) / s;
+    ANC[i * 3 + 1] = -(ANC_B[o] < ANC_B[o + 1] ? ANC_B[o] : ANC_B[o + 1]); // le plus bas des deux pieds sur y = 0
+    ANC[i * 3 + 2] = (p0 * (ANC_P[i * 4 + 1] - ANC_B[o + 3]) + p1 * (ANC_P[i * 4 + 3] - ANC_B[o + 5])) / s;
+    h0 += ANC_B[o + 6] + ANC[i * 3];
+    h1 += ANC_B[o + 7] + ANC[i * 3 + 2];
+  }
+  // lissage circulaire de la correction horizontale (noyau binomial 1 4 6 4 1, deux passes) : un pied qui quitte le sol
+  // retire son terme d'un coup (jusqu'à 1,6 cm en une image, mesuré sur l'Offensive Idle) — étalé sur une dizaine d'images
+  for (let passe = 0; passe < 2 * ANC_SUR * ANC_SUR; passe++) { // même largeur en temps quel que soit ANC_SUR
+    for (let i = 0; i < n; i++) {
+      const a2 = ((i - 2 + n) % n) * 3;
+      const a1 = ((i - 1 + n) % n) * 3;
+      const c0 = i * 3;
+      const b1 = ((i + 1) % n) * 3;
+      const b2 = ((i + 2) % n) * 3;
+      ANC_L[i * 2] = (ANC[a2] + 4 * ANC[a1] + 6 * ANC[c0] + 4 * ANC[b1] + ANC[b2]) / 16;
+      ANC_L[i * 2 + 1] = (ANC[a2 + 2] + 4 * ANC[a1 + 2] + 6 * ANC[c0 + 2] + 4 * ANC[b1 + 2] + ANC[b2 + 2]) / 16;
+    }
+    for (let i = 0; i < n; i++) {
+      ANC[i * 3] = ANC_L[i * 2];
+      ANC[i * 3 + 2] = ANC_L[i * 2 + 1];
+    }
+  }
+  h0 = 0;
+  h1 = 0;
+  for (let i = 0; i < n; i++) {
+    h0 += ANC_B[i * 8 + 6] + ANC[i * 3];
+    h1 += ANC_B[i * 8 + 7] + ANC[i * 3 + 2];
+  }
+  h0 /= n;
+  h1 /= n;
+  // constante : hanche centrée en moyenne (cadrage d'avant) ; mesures pour les tests (pieds de poids 1 seulement) :
+  // [0] écart max à l'ancre de sa phase après correction, [1] même écart avec le x / z du clip seul, [2] avec la hanche
+  // clouée (ancre de la phase prise dans le repère de la hanche), [5] balancement de la hanche
+  let r = 0;
+  let ex = 0;
+  let eh = 0;
+  for (let i = 0; i < n; i++) {
+    const o = i * 8;
+    ANC[i * 3] -= h0;
+    ANC[i * 3 + 2] -= h1;
+    for (let k = 0; k < 2; k++) {
+      if (ANC_W[i * 2 + k] < 1) continue;
+      const ax = ANC_P[i * 4 + 2 * k] - h0;
+      const az = ANC_P[i * 4 + 2 * k + 1] - h1;
+      const cx = ANC_B[o + 2 + 2 * k];
+      const cz = ANC_B[o + 3 + 2 * k];
+      const d = Math.hypot(cx + ANC[i * 3] - ax, cz + ANC[i * 3 + 2] - az);
+      if (d > r) r = d;
+      const dc = Math.hypot(cx - ANC_P[i * 4 + 2 * k], cz - ANC_P[i * 4 + 2 * k + 1]);
+      if (dc > ex) ex = dc;
+    }
+    eh = Math.max(eh, Math.hypot(ANC_B[o + 6] + ANC[i * 3], ANC_B[o + 7] + ANC[i * 3 + 2]));
+  }
+  ANC_INFO[0] = r;
+  ANC_INFO[1] = ex;
+  ANC_INFO[5] = eh;
+  // hanche clouée (ancien calage) : écart max du (centre − hanche) à sa moyenne sur la phase
+  let ev = 0;
+  for (let k = 0; k < 2; k++) {
+    for (let i = 0; i < n; i++) {
+      if (ANC_W[i * 2 + k] < 1) continue;
+      // moyenne de (centre − hanche) sur la phase de l'image i : images voisines de même ancre
+      let sx = 0;
+      let sz = 0;
+      let m = 0;
+      for (let q = 0; q < n; q++) {
+        if (ANC_W[q * 2 + k] > 0 && ANC_P[q * 4 + 2 * k] === ANC_P[i * 4 + 2 * k] && ANC_P[q * 4 + 2 * k + 1] === ANC_P[i * 4 + 2 * k + 1]) {
+          sx += ANC_B[q * 8 + 2 + 2 * k] - ANC_B[q * 8 + 6];
+          sz += ANC_B[q * 8 + 3 + 2 * k] - ANC_B[q * 8 + 7];
+          m++;
+        }
+      }
+      ev = Math.max(ev, Math.hypot(ANC_B[i * 8 + 2 + 2 * k] - ANC_B[i * 8 + 6] - sx / m, ANC_B[i * 8 + 3 + 2 * k] - ANC_B[i * 8 + 7] - sz / m));
+    }
+  }
+  ANC_INFO[2] = ev;
+  ANC_N[0] = n;
+  jambesIK(c, n, h0, h1);
+}
+
+/**
+ * Tests (§ E5.AP, sonde) : sommets réels des deux pieds à chaque image du clip c de la vitrine ouverte, x / z du clip
+ * gardés, SANS correction, corps non tourné — [image][pied][x, y, z…] aplati (Float32), et le nombre de sommets par pied.
+ * Hors image (appel de test seulement) ; la pose courante est refaite à l'image suivante.
+ */
+export function ancreSommets(corrige, pas = 1) {
+  const a = VN[1];
+  const c = idlesVitrine[a] !== null ? idlesVitrine[a] : idlesAgents[a] !== null ? idlesAgents[a] : idleCuit;
+  if (c === null || mesh === null) return null;
+  const nv = [0, 0];
+  for (let k = 0; k < 2; k++) for (let p = 1; p < PIEDS_V[k].length; p += 2) nv[k] += PIEDS_V[k][p].length / 3;
+  const n = c.n * pas; // pas : échantillons par image du clip (1 = aux images)
+  const out = new Float32Array(n * (nv[0] + nv[1]) * 3);
+  const ry = mesh.rotation.y;
+  mesh.rotation.y = 0;
+  const t0 = c.temps[0];
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    c.temps[0] = i / (c.fps * pas);
+    c.echantillonner(null, os, oRacine, 0);
+    hancheDuClip();
+    if (corrige) appliquerAncre(c); // pose réelle de la vitrine (translation + IK)
+    mesh.updateMatrixWorld(true);
+    for (let k = 0; k < 2; k++) {
+      const L = PIEDS_V[k];
+      for (let p = 0; p < L.length; p += 2) {
+        const e = L[p].matrixWorld.elements;
+        const l = L[p + 1];
+        for (let v = 0; v < l.length; v += 3) {
+          out[j++] = e[0] * l[v] + e[4] * l[v + 1] + e[8] * l[v + 2] + e[12];
+          out[j++] = e[1] * l[v] + e[5] * l[v + 1] + e[9] * l[v + 2] + e[13];
+          out[j++] = e[2] * l[v] + e[6] * l[v + 1] + e[10] * l[v + 2] + e[14];
+        }
+      }
+    }
+  }
+  c.temps[0] = t0;
+  mesh.rotation.y = ry;
+  return { n, fps: c.fps * pas, nv, sommets: out };
+}
+
+/** Tests (§ E5.AP) : mesures brutes du précalcul, 8 nombres par image du clip (voir ANC_B), et la correction (3 par image). */
+export function ancreBrut() {
+  const n = ANC_N[0] / ANC_SUR; // aux images du clip (un échantillon sur ANC_SUR)
+  const b = [];
+  const cc = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < 8; j++) b.push(ANC_B[i * ANC_SUR * 8 + j]);
+    for (let j = 0; j < 3; j++) cc.push(ANC[i * ANC_SUR * 3 + j]);
+  }
+  return { n, b, c: cc };
+}
+
+// § E5.AP (2e temps) — CINÉMATIQUE INVERSE DES JAMBES, précalculée. La translation du corps ne peut tenir qu'un point : le
+// transfert Mixamo → robot fait aussi glisser les pieds L'UN PAR RAPPORT À L'AUTRE (Offensive Idle : 4,9 cm pendant un
+// appui, x / z du clip seul ; 4,7 cm après la translation). Pour chaque image du clip et chaque pied posé (poids > 0), le
+// pied est ramené sur l'ancre de sa phase (écart × poids) par une IK à deux os (hanche → genou → cheville, genou dans le
+// plan du genou du clip), le pied gardant son orientation du clip. Rotations locales de jambe_*, tibia_*, pied_* rangées
+// par image (IKQ), interpolées à chaque image (slerp écrit champ par champ : aucune allocation, aucun flottant passé en
+// argument). Même règle qu'en jeu (piedPose : pieds cloués par IK).
+const IK_OS = ['jambe_g', 'tibia_g', 'pied_g', 'jambe_d', 'tibia_d', 'pied_d'];
+const IKQ = new Float32Array(ANC_MAX * 24); // par image : 6 os × quaternion local (x, y, z, w)
+const IK_N = new Int32Array(1); // images de l'IK (0 : aucune)
+const IK_B = []; // os de IK_OS (construire → jambesIK)
+const vIH = new THREE.Vector3();
+const vIK = new THREE.Vector3();
+const vIA = new THREE.Vector3();
+const vIT = new THREE.Vector3();
+const vIU = new THREE.Vector3();
+const vIP = new THREE.Vector3();
+const vIK2 = new THREE.Vector3();
+const vIX = new THREE.Vector3();
+const vIY = new THREE.Vector3();
+const qIA = new THREE.Quaternion();
+const qIB = new THREE.Quaternion();
+const qIF = new THREE.Quaternion();
+const qIP = new THREE.Quaternion();
+
+/** IK de la jambe k (0 g, 1 d) : cheville déplacée de (dx, 0, dz) en monde (IK_D), pied gardant son orientation. */
+const IK_D = new Float64Array(2);
+function ikJambe(k) {
+  const J = IK_B[k * 3];
+  const T = IK_B[k * 3 + 1];
+  const P = IK_B[k * 3 + 2];
+  J.getWorldPosition(vIH);
+  T.getWorldPosition(vIK);
+  P.getWorldPosition(vIA);
+  P.getWorldQuaternion(qIF);
+  vIT.copy(vIA);
+  vIT.x += IK_D[0];
+  vIT.z += IK_D[1];
+  const l1 = vIH.distanceTo(vIK);
+  const l2 = vIK.distanceTo(vIA);
+  vIU.subVectors(vIT, vIH);
+  let d = vIU.length();
+  if (d < 1e-6) return;
+  vIU.multiplyScalar(1 / d);
+  d = Math.min(l1 + l2 - 1e-4, Math.max(Math.abs(l1 - l2) + 1e-4, d));
+  // plan du genou : genou du clip (perpendiculaire à hanche → cheville) + un léger biais vers l'avant de la cuisse (son axe
+  // +z). Sans ce biais, une jambe presque tendue (Holding Idle du Bastion) donnait un plan qui basculait d'un échantillon à
+  // l'autre : exact aux échantillons, mais l'interpolation entre deux jambes opposées faisait glisser le pied (mesuré)
+  vIP.subVectors(vIK, vIH);
+  vIP.addScaledVector(vIU, -vIP.dot(vIU));
+  J.getWorldQuaternion(qIB);
+  vIX.set(0, 0, 1).applyQuaternion(qIB);
+  vIX.addScaledVector(vIU, -vIX.dot(vIU));
+  vIP.addScaledVector(vIX, 0.02);
+  if (vIP.lengthSq() < 1e-12) vIP.set(0, 0, 1).addScaledVector(vIU, -vIU.z);
+  vIP.normalize();
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  vIK2.copy(vIH).addScaledVector(vIU, a).addScaledVector(vIP, h);
+  // cuisse : hanche → genou visé
+  qIA.setFromUnitVectors(vIX.subVectors(vIK, vIH).normalize(), vIY.subVectors(vIK2, vIH).normalize());
+  J.getWorldQuaternion(qIB).premultiply(qIA);
+  J.parent.getWorldQuaternion(qIP).invert();
+  J.quaternion.multiplyQuaternions(qIP, qIB);
+  J.updateMatrixWorld(true);
+  // tibia : genou → cheville visée
+  T.getWorldPosition(vIK);
+  P.getWorldPosition(vIA);
+  vIT.copy(vIH).addScaledVector(vIU, d);
+  qIA.setFromUnitVectors(vIX.subVectors(vIA, vIK).normalize(), vIY.subVectors(vIT, vIK).normalize());
+  T.getWorldQuaternion(qIB).premultiply(qIA);
+  T.parent.getWorldQuaternion(qIP).invert();
+  T.quaternion.multiplyQuaternions(qIP, qIB);
+  T.updateMatrixWorld(true);
+  // pied : orientation du clip gardée en monde
+  P.parent.getWorldQuaternion(qIP).invert();
+  P.quaternion.multiplyQuaternions(qIP, qIF);
+  P.updateMatrixWorld(true);
+}
+
+/**
+ * Précalcul de l'IK (après ancrerPieds : ANC, ANC_W, ANC_P prêts ; h0, h1 = constante de centrage). Hors image. Range
+ * aussi dans ANC_INFO[0] l'écart max d'un pied posé (poids 1) à son ancre APRÈS l'IK.
+ */
+function jambesIK(c, n, h0, h1) {
+  IK_N[0] = 0;
+  IK_B.length = 0;
+  for (const nom of IK_OS) {
+    if (!os[nom] || !os[nom].parent) return;
+    IK_B.push(os[nom]);
+  }
+  const ry = mesh.rotation.y;
+  mesh.rotation.y = 0;
+  const t0 = c.temps[0];
+  const o2 = (ANC_MAX - 1) * 8; // mesures de travail (au-delà des images du clip)
+  let r = 0;
+  for (let i = 0; i < n; i++) {
+    c.temps[0] = i / (c.fps * ANC_SUR);
+    c.echantillonner(null, os, oRacine, 0);
+    hancheDuClip();
+    oRacine.position.x += ANC[i * 3];
+    oRacine.position.y += ANC[i * 3 + 1];
+    oRacine.position.z += ANC[i * 3 + 2];
+    mesh.updateMatrixWorld(true);
+    for (let k = 0; k < 2; k++) {
+      const w = ANC_W[i * 2 + k];
+      if (w <= 0) continue;
+      // pied rigide pendant l'appui : orientation = celle du clip mêlée à la moyenne de la phase par le poids (le Fight Idle
+      // fait pivoter le pied gauche sur lui-même, pointe qui glisse à 0,3 m/s, centre immobile — mesuré)
+      const P = IK_B[k * 3 + 2];
+      const ph = ANC_PH[i * 2 + k] * 8 + k * 4;
+      P.getWorldQuaternion(qIF);
+      qPQ.set(PHQ[ph], PHQ[ph + 1], PHQ[ph + 2], PHQ[ph + 3]);
+      qIF.slerp(qPQ, w);
+      P.parent.getWorldQuaternion(qIP).invert();
+      P.quaternion.multiplyQuaternions(qIP, qIF);
+      P.updateMatrixWorld(true);
+      mesurerPied(k, o2);
+      IK_D[0] = (ANC_P[i * 4 + 2 * k] - h0 - ANC_B[o2 + 2 + 2 * k]) * w;
+      IK_D[1] = (ANC_P[i * 4 + 2 * k + 1] - h1 - ANC_B[o2 + 3 + 2 * k]) * w;
+      if (IK_D[0] * IK_D[0] + IK_D[1] * IK_D[1] > 1e-10) ikJambe(k);
+      if (w >= 1) {
+        mesurerPied(k, o2);
+        const e = Math.hypot(ANC_P[i * 4 + 2 * k] - h0 - ANC_B[o2 + 2 + 2 * k], ANC_P[i * 4 + 2 * k + 1] - h1 - ANC_B[o2 + 3 + 2 * k]);
+        if (e > r) r = e;
+      }
+    }
+    // pieds tournés à l'orientation de la phase : une pointe ou un talon peut passer sous le sol (Éclaireur : −11 mm,
+    // mesuré) — le plus bas des deux pieds est reposé sur y = 0 (la racine monte, les rotations de l'IK ne changent pas)
+    mesurerPied(0, o2);
+    mesurerPied(1, o2);
+    ANC[i * 3 + 1] -= ANC_B[o2] < ANC_B[o2 + 1] ? ANC_B[o2] : ANC_B[o2 + 1];
+    for (let b = 0; b < 6; b++) {
+      const q = IK_B[b].quaternion;
+      const o = (i * 6 + b) * 4;
+      IKQ[o] = q.x;
+      IKQ[o + 1] = q.y;
+      IKQ[o + 2] = q.z;
+      IKQ[o + 3] = q.w;
+    }
+  }
+  c.temps[0] = t0;
+  mesh.rotation.y = ry;
+  ANC_INFO[0] = r;
+  IK_N[0] = n;
+}
+
+/** Correction de l'image courante du clip (temps c.temps[0], interpolée comme echantillonner) ajoutée à la racine. */
+function appliquerAncre(c) {
+  const n = ANC_N[0];
+  if (n === 0 || n !== c.n * ANC_SUR) {
+    // pas de correction (clip trop long, pieds absents) : l'ancien calage, hanche clouée en x / z
+    oRacine.position.x = -qV.x; // qV = Qr·H (hancheDuClip) : hanche du clip à x = z = 0
+    oRacine.position.z = -qV.z;
+    return;
+  }
+  let u = (c.temps[0] % c.duree) * c.fps * ANC_SUR;
+  if (u < 0) u += n;
+  const i0 = Math.floor(u) % n;
+  const i1 = (i0 + 1) % n;
+  const f = u - Math.floor(u);
+  const a = i0 * 3;
+  const b = i1 * 3;
+  const p = oRacine.position;
+  p.x += ANC[a] + (ANC[b] - ANC[a]) * f;
+  p.y += ANC[a + 1] + (ANC[b + 1] - ANC[a + 1]) * f;
+  p.z += ANC[a + 2] + (ANC[b + 2] - ANC[a + 2]) * f;
+  if (IK_N[0] !== n) return;
+  // jambes de l'IK précalculée : slerp entre les deux images du clip (mêmes seuils que three), champ par champ
+  for (let k = 0; k < 6; k++) {
+    const oa = (i0 * 6 + k) * 4;
+    const ob = (i1 * 6 + k) * 4;
+    const ax = IKQ[oa], ay = IKQ[oa + 1], az = IKQ[oa + 2], aw = IKQ[oa + 3];
+    let bx = IKQ[ob], by = IKQ[ob + 1], bz = IKQ[ob + 2], bw = IKQ[ob + 3];
+    let cs = ax * bx + ay * by + az * bz + aw * bw;
+    if (cs < 0) {
+      cs = -cs;
+      bx = -bx;
+      by = -by;
+      bz = -bz;
+      bw = -bw;
+    }
+    let k0 = 1 - f;
+    let k1 = f;
+    if (cs < 0.9995) {
+      const sn = Math.sqrt(1 - cs * cs);
+      const ang = Math.atan2(sn, cs);
+      k0 = Math.sin((1 - f) * ang) / sn;
+      k1 = Math.sin(f * ang) / sn;
+    }
+    let x = ax * k0 + bx * k1, y = ay * k0 + by * k1, z = az * k0 + bz * k1, w = aw * k0 + bw * k1;
+    const l = Math.sqrt(x * x + y * y + z * z + w * w) || 1;
+    const q = IK_B[k].quaternion;
+    q._x = x / l;
+    q._y = y / l;
+    q._z = z / l;
+    q._w = w / l;
+    q._onChangeCallback();
+  }
+}
+//#endregion
 
 // § E4.L.3 : capsules des bras et des jambes en MONDE pour la cape du portrait — mêmes points et rayons que heros-anim
 // (bras : épaule → main ; jambe : hanche → pied), écrits dans capsulesMonde (aucun flottant passé en argument)
@@ -1170,6 +1737,7 @@ function mesurerVitrine() {
   VB[8] = W;
   VB[9] = H;
   VT[2] = s;
+  crtTaille(gw, gh, s); // § E5.AQ
   return true;
 }
 
@@ -1197,7 +1765,12 @@ function piedsSol() {
     xd = x * c - z * s;
     zd = x * s + z * c;
   }
-  u.set(xg, zg, xd, zd);
+  // § E5.AQ : champ par champ (Vector4.set reçoit 4 flottants : emballés par V8 quand l'appel n'est pas en ligne, § V ;
+  // 802 o/image relevés une fois par tests/vitrine-rotation-crt)
+  u.x = xg;
+  u.y = zg;
+  u.z = xd;
+  u.w = zd;
 }
 
 /** Uniformes partagés et lumières du monde de lum-b5 posés (valeurs du jeu gardées dans U_SAUVE / PD_SAUVE). */
@@ -1237,9 +1810,56 @@ function poserVitrine() {
   const c = idlesVitrine[a] !== null ? idlesVitrine[a] : idlesAgents[a] !== null ? idlesAgents[a] : idleCuit;
   if (c !== null) {
     poserCuit(c, 1, true);
-    mesh.rotation.y = -T[1] + VT[1];
-  } else poserCode(VT[0], VT[1]);
+    mesh.rotation.y = -T[1] + VT[1] + VR[0]; // § E5.AQ : + rotation donnée au glisser
+  } else poserCode(VT[0], VT[1] + VR[0]);
 }
+
+//#region e5:AQ-rotation-vitrine
+// § E5.AQ — Femz, 23/11 : « pouvoir cliquer et les faire tourner comme avant ». Même ressenti que le portrait du Noyau et
+// de la pause (§ E4.E.4, brancherRotation) : clic maintenu (ou doigt) + glisser horizontal = rotation autour de l'axe
+// vertical, PAUSE.rotation.radParPx rad par px CSS, sans inertie ; relâché, l'agent garde son angle ; de face à chaque
+// ouverture de la vitrine (autre agent, titre → fiche, retour). La toile est sans clic (pointer-events: none, les menus
+// passent au-dessus) : un seul écouteur sur la fenêtre, posé une fois ; un appui ne fait tourner que s'il tombe dans la
+// région rendue de l'agent (VB, volume du cadre projeté) et pas sur un bouton, un lien ou un champ. Événements de pointeur
+// seulement : rien par image.
+// [0] rotation donnée au glisser (rad), [1] x du pointeur au dernier mouvement (px), [2] glisser en cours (0 / 1)
+const VR = new Float64Array(3);
+const NON_GLISSER = 'button, a, input, select, textarea, label, [role="button"], [contenteditable]';
+
+/** Appui (x, y px CSS) dans la région rendue de l'agent de la vitrine ouverte et affichée. */
+function dansAgent(x, y) {
+  if (VN[0] !== 1 || VN[6] === 1 || toileV === null || VB[8] === 0 || VB[2] <= 1) return false;
+  const r = toileV.getBoundingClientRect();
+  if (r.width === 0 || r.height === 0) return false;
+  const u = ((x - r.left) * VB[8]) / r.width;
+  const v = ((y - r.top) * VB[9]) / r.height;
+  return u >= VB[0] && u <= VB[0] + VB[2] && v >= VB[1] && v <= VB[1] + VB[3];
+}
+
+function brancherRotationVitrine() {
+  window.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !dansAgent(e.clientX, e.clientY)) return;
+    if (e.target && e.target.closest && e.target.closest(NON_GLISSER)) return;
+    VR[2] = 1;
+    VR[1] = e.clientX;
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (VR[2] === 0) return;
+    if (VN[0] !== 1) {
+      VR[2] = 0;
+      return;
+    }
+    VR[0] += (e.clientX - VR[1]) * PAUSE.rotation.radParPx;
+    VR[1] = e.clientX;
+  });
+  const fin = () => {
+    VR[2] = 0;
+  };
+  window.addEventListener('pointerup', fin);
+  window.addEventListener('pointercancel', fin);
+  window.addEventListener('blur', fin);
+}
+//#endregion
 
 /** Construit et habille la vitrine sur l'agent VN[1] (lumières lum-b5, armes, sol). Faux si son modèle n'est pas chargé. */
 function habillerVitrine() {
@@ -1292,7 +1912,11 @@ export function openVitrine(a, opts = {}) {
   if (toileV === null) return;
   if (N[3] === 1 || fixe) close();
   if (scene === null) creerScene();
-  if (VN[1] !== a || VN[0] === 0) VT[0] = 0; // autre agent ou vitrine fermée : l'idle repart de zéro (titre → fiche : accueil.cacher() ferme la vitrine avant)
+  if (VN[1] !== a || VN[0] === 0) {
+    VT[0] = 0;
+    VR[0] = 0; // § E5.AQ : de face à l'ouverture (§ E4.E.4)
+    VR[2] = 0;
+  } // autre agent ou vitrine fermée : l'idle repart de zéro (titre → fiche : accueil.cacher() ferme la vitrine avant)
   VN[0] = 1;
   vitrineSkin = ctx.player && ctx.player.skinPour ? ctx.player.skinPour(a, opts.skin || SKIN_BASE) : SKIN_BASE; // repli sur la base si le fichier du skin ne charge pas
   VN[1] = a;
@@ -1349,17 +1973,35 @@ export function renderVitrine(realDt) {
   const scissor = renderer.getScissorTest();
   renderer.getClearColor(SAUVE_CLEAR);
   const alpha = renderer.getClearAlpha();
-  renderer.setRenderTarget(null);
-  renderer.setViewport(VPV);
-  renderer.setScissor(VPV);
-  renderer.setScissorTest(true);
   renderer.setClearColor(0x000000, 0);
-  renderer.clear(true, true, false);
-  uniformesVitrine();
-  try {
-    renderer.render(scene, camV);
-  } finally {
-    uniformesRendus(); // même si le rendu lève : le décor du jeu retrouve ses uniformes et ses lumières du monde
+  if (CRT_N[1] === 1) {
+    // § E5.AQ : look pixel CRT — l'agent en basse définition dans crtRT (un texel = un gros pixel), puis la passe CRT
+    renderer.setRenderTarget(crtRT);
+    renderer.clear(true, true, false);
+    uniformesVitrine();
+    try {
+      renderer.render(scene, camV);
+    } finally {
+      uniformesRendus();
+    }
+    renderer.setRenderTarget(null);
+    renderer.setViewport(VPV);
+    renderer.setScissor(VPV);
+    renderer.setScissorTest(true);
+    renderer.clear(true, true, false);
+    renderer.render(crtScene, crtCam);
+  } else {
+    renderer.setRenderTarget(null);
+    renderer.setViewport(VPV);
+    renderer.setScissor(VPV);
+    renderer.setScissorTest(true);
+    renderer.clear(true, true, false);
+    uniformesVitrine();
+    try {
+      renderer.render(scene, camV);
+    } finally {
+      uniformesRendus(); // même si le rendu lève : le décor du jeu retrouve ses uniformes et ses lumières du monde
+    }
   }
   g2dV.clearRect(VB[0], VB[1], VB[2], VB[3]);
   g2dV.drawImage(renderer.domElement, 0, VB[7] - VB[5], VB[4], VB[5], VB[0], VB[1], VB[2], VB[3]);
@@ -1369,6 +2011,152 @@ export function renderVitrine(realDt) {
   renderer.setClearColor(SAUVE_CLEAR, alpha);
   VN[5]++;
 }
+
+//#region e5:AQ-crt-vitrine
+// § E5.AQ — looks pixel CRT de la vitrine (VITRINE.crt, propositions à Femz). L'agent est rendu dans crtRT à la taille
+// de la région ÷ côté du gros pixel (moins de pixels que le rendu net), puis un quadrilatère plein-région le recopie dans
+// le canvas du jeu (même coin bas-gauche, même recopie dans la toile) en posant lignes, grille RVB, aberration, lueur et
+// postérisation tramée — mêmes formules que le CRT de la partie (src/rendu/post.js) pour les lignes « cos » ; profil
+// gaussien, triades et lueur de l'écran de chargement (crt.py) pour les autres. Tampon linéaire en demi-flottants : la
+// conversion vers l'écran (sRGB) est faite par le quadrilatère, comme le faisait le rendu direct. Alpha gardé (l'agent
+// reste détouré sur le fond peint). Tout est créé à la 1re activation (hors image) ; par image : 2 rendus, 0 allocation.
+// [0] variante choisie, [1] passe active (variante non nulle ET objets prêts)
+const CRT_N = new Int32Array(2);
+let crtRT = null;
+let crtScene = null;
+let crtCam = null;
+let crtMat = null;
+const CRT_FRAG = `
+  uniform sampler2D tSrc; uniform vec2 uSrc; uniform vec2 uOut; uniform float uScan; uniform float uScanPx; uniform float uScanY0; uniform float uScanS; uniform float uGauss;
+  uniform float uMask; uniform float uChroma; uniform float uLueur; uniform float uNiveaux;
+  float crtBayer2( vec2 a ) { a = floor( a ); return fract( dot( a, vec2( 0.5, a.y * 0.75 ) ) ); }
+  float crtBayer( vec2 a ) { return crtBayer2( 0.5 * a ) * 0.25 + crtBayer2( a ); }
+  vec4 lire( vec2 c ) { return texture2D( tSrc, ( floor( c ) + 0.5 ) / uSrc ); }
+  void main() {
+    vec2 uv = gl_FragCoord.xy / uOut;           // région rendue (coin bas-gauche du canvas)
+    vec2 cel = uv * uSrc;                       // position dans la grille des gros pixels (= texels de crtRT)
+    vec4 c = lire( cel );
+    if ( uChroma > 0.0 ) {                      // aberration (en gros pixels) : rouge vers l'extérieur, bleu vers l'intérieur
+      vec2 o = ( uv - 0.5 ) * 2.0 * uChroma;
+      vec4 r = lire( cel + o );
+      vec4 b = lire( cel - o );
+      c.r = r.r; c.b = b.b; c.a = max( c.a, max( r.a, b.a ) * 0.85 );
+    }
+    vec3 col = c.rgb;
+    if ( uLueur > 0.0 ) {                       // lueur des phosphores : voisins à 1 gros pixel
+      vec3 h = lire( cel + vec2( 1.0, 0.0 ) ).rgb + lire( cel - vec2( 1.0, 0.0 ) ).rgb + lire( cel + vec2( 0.0, 1.0 ) ).rgb + lire( cel - vec2( 0.0, 1.0 ) ).rgb;
+      col += uLueur * 0.25 * h;
+    }
+    if ( uNiveaux > 0.0 ) {                     // postérisation tramée (sur l'alpha prémultiplié : divisé puis remultiplié)
+      float a = max( c.a, 1e-4 );
+      vec3 gp = pow( clamp( col / a, 0.0, 1.0 ), vec3( 1.0 / 2.2 ) ) * ( uNiveaux - 1.0 );
+      gp = floor( gp + crtBayer( cel ) ) / ( uNiveaux - 1.0 );
+      col = pow( gp, vec3( 2.2 ) ) * a;
+    }
+    if ( uScan > 0.0 ) {                        // lignes de période uScanPx (px de la toile = px d'écran), comptées depuis
+      // le HAUT de la toile comme le calque CSS du décor (variante « plein ») : même trame, même phase, pas de moiré
+      float ph = fract( ( uScanY0 - gl_FragCoord.y / uScanS - 0.5 ) / uScanPx ); // creux au centre des rangées kP
+      float ligne = uGauss > 0.5 ? exp( -pow( ( ph - 0.5 ) / 0.36, 2.0 ) ) : pow( 0.5 - 0.5 * cos( ph * 6.2831853 ), 0.6 );
+      col *= mix( 1.0, ligne, uScan ) * ( 1.0 + uScan * 0.45 );
+    }
+    if ( uMask > 0.0 ) {                        // triades RVB verticales dans chaque gros pixel
+      float k = floor( fract( cel.x ) * 3.0 );
+      vec3 m = k < 0.5 ? vec3( 1.0, 0.32, 0.32 ) : k < 1.5 ? vec3( 0.32, 1.0, 0.32 ) : vec3( 0.32, 0.32, 1.0 );
+      col *= mix( vec3( 1.0 ), m * 1.6, uMask );
+    }
+    gl_FragColor = vec4( col, c.a );
+    #include <colorspace_fragment>
+  }`;
+
+/** Objets de la passe (1re activation, hors image). */
+function crtCreer() {
+  if (crtRT !== null) return;
+  crtRT = new THREE.WebGLRenderTarget(8, 8, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+  crtMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tSrc: { value: crtRT.texture },
+      uSrc: { value: new THREE.Vector2(8, 8) },
+      uOut: { value: new THREE.Vector2(8, 8) },
+      uScan: { value: 0 },
+      uScanPx: { value: 4 },
+      uScanY0: { value: 0 },
+      uScanS: { value: 1 },
+      uGauss: { value: 0 },
+      uMask: { value: 0 },
+      uChroma: { value: 0 },
+      uLueur: { value: 0 },
+      uNiveaux: { value: 0 },
+    },
+    vertexShader: 'void main() { gl_Position = vec4( position.xy, 0.0, 1.0 ); }',
+    fragmentShader: CRT_FRAG,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.NoBlending,
+  });
+  const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), crtMat);
+  q.frustumCulled = false;
+  crtScene = new THREE.Scene();
+  crtScene.add(q);
+  crtCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+}
+
+/** Variante n de VITRINE.crt (0 : rendu net). Hors image ; la toile se remesure (taille du tampon de la passe). */
+export function setCrtVitrine(n) {
+  const V = VITRINE.crt;
+  const k = V && V.variantes[n | 0] ? n | 0 : 0;
+  CRT_N[0] = k;
+  const v = k > 0 ? V.variantes[k] : null;
+  if (v !== null) {
+    crtCreer();
+    const u = crtMat.uniforms;
+    u.uScan.value = v.scan || 0;
+    u.uGauss.value = v.ligne === 'gauss' ? 1 : 0;
+    u.uMask.value = v.mask || 0;
+    u.uLueur.value = v.lueur || 0;
+    u.uNiveaux.value = v.niveaux || 0;
+  }
+  CRT_N[1] = 0; // reprise par crtTaille à la prochaine mesure
+  VN[4] = 1;
+  // lignes sur tout l'écran (calque CSS, ui-pile.css) : attribut lu par la feuille de style, rien par image
+  const html = document.documentElement;
+  if (v !== null && v.plein) {
+    html.dataset.srVitrineCrt = String(k);
+    html.style.setProperty('--sr-vitrine-crt-p', (v.scanPx || v.pixel || 4) + 'px');
+    html.style.setProperty('--sr-vitrine-crt-a', String(Math.min(0.6, v.scan || 0.3))); // joint : (1 − scan) du milieu, comme l'agent
+  } else delete html.dataset.srVitrineCrt;
+  return k;
+}
+
+/** Taille de crtRT pour une région de gw × gh px du tampon à l'échelle s (mesurerVitrine). Hors image. */
+function crtTaille(gw, gh, s) {
+  const k = CRT_N[0];
+  const v = k > 0 && VITRINE.crt ? VITRINE.crt.variantes[k] : null;
+  if (v === null || crtRT === null) {
+    CRT_N[1] = 0;
+    return;
+  }
+  const px = Math.max(1, (v.pixel || 1) * s); // gros pixel en pixels du tampon (région agrandie de 1 / s à la recopie)
+  const w = Math.max(1, Math.round(gw / px));
+  const h = Math.max(1, Math.round(gh / px));
+  if (crtRT.width !== w || crtRT.height !== h) crtRT.setSize(w, h);
+  crtMat.uniforms.uSrc.value.set(w, h);
+  crtMat.uniforms.uOut.value.set(gw, gh);
+  crtMat.uniforms.uScanPx.value = Math.max(1, v.scanPx || v.pixel || 1); // px de la toile
+  crtMat.uniforms.uScanY0.value = VB[1] + VB[3]; // bas de la région rendue dans la toile (px depuis son haut)
+  crtMat.uniforms.uScanS.value = s; // px du tampon par px de la toile
+  crtMat.uniforms.uChroma.value = (v.chroma || 0) / Math.max(1, v.pixel || 1); // px d'écran → gros pixels
+  solMat.uniforms.uVue.value.x = w; // le sol s'efface aux bords de la région : ici en texels de crtRT
+  solMat.uniforms.uVue.value.y = h;
+  g2dV.imageSmoothingEnabled = false; // gros pixels nets même si la région est agrandie
+  CRT_N[1] = 1;
+}
+
+/** Variante du chargement : ?vitrineCrt=N, sinon VITRINE.crt.actif. */
+function crtDuChargement() {
+  const q = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('vitrineCrt') : null;
+  return q !== null ? Number(q) | 0 : VITRINE.crt ? VITRINE.crt.actif | 0 : 0;
+}
+//#endregion
 
 /** Tests : état de la vitrine (hanche : point de hanche du clip, en monde). */
 function inspectVitrine() {
@@ -1397,6 +2185,14 @@ function inspectVitrine() {
     idle: c ? c.source : 'code',
     hanche,
     sol: sol !== null && sol.visible,
+    rotation: VR[0], // § E5.AQ : rotation donnée au glisser (rad)
+    crt: CRT_N[0], // § E5.AQ : variante du look pixel CRT (0 : net)
+    crtActif: CRT_N[1] === 1,
+    crtTampon: crtRT === null ? null : [crtRT.width, crtRT.height],
+    glisse: VR[2] === 1,
+    // § E5.AP : correction des pieds (images du clip ; glissement résiduel, excursions clip seul / hanche clouée, bas des
+    // pieds sans recalage, balancement de la hanche — m)
+    ancre: { images: ANC_N[0], residuel: ANC_INFO[0], clipSeul: ANC_INFO[1], hancheClouee: ANC_INFO[2], basMin: ANC_INFO[3], basMax: ANC_INFO[4], hanche: ANC_INFO[5], ms: ANC_MS[0] },
   };
 }
 

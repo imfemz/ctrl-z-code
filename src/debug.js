@@ -132,6 +132,7 @@ export function init(context) {
     // Écran Agents (tâche 5) : grille / fiche (mêmes gardes et mêmes valeurs de retour que ctx.actions)
     agentsOuvrir: (origine, a, skin) => A.agentsOuvrir(origine, a, skin),
     agentFiche: (a) => A.agentFiche(a),
+    vitrineCrt: (n) => (ctx.pauseAgent && ctx.pauseAgent.setCrtVitrine ? ctx.pauseAgent.setCrtVitrine(n) : -1), // § E5.AQ : look pixel CRT de la vitrine
     agentJouer: (a) => apresAgent(A.agentJouer(a)),
     agentRetour: () => A.agentRetour(),
     agentSkin: (a, skin) => A.agentSkin(a, skin), // tâche 6 : vrai = choisi ; faux = seulement visé (verrouillé) ou refusé

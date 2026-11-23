@@ -4,8 +4,20 @@
 // Changer `version` rallume la pastille « NOUVEAU » chez tous les joueurs (PATCHNOTES_UI.cleVue).
 // Sources : git log et ARCHITECTURE.md (plan addictif, étapes 1 à 4).
 export const PATCHNOTES = {
-  version: '0.5.18',
+  version: '0.5.19',
   entrees: [
+    {
+      version: '0.5.19',
+      date: '23/11/2026',
+      titre: 'Pieds sur terre',
+      lignes: [
+        'Accueil, Noyau et fiche des agents : nouveau look rétro, en pixels avec les lignes d’un écran cathodique.',
+        'Les agents ont les pieds bien posés dans les menus : ils ne glissent plus pendant leur animation d’attente.',
+        'Cliquez-glissez sur votre agent pour le faire tourner, à l’accueil, au Noyau et sur sa fiche.',
+        'Les cartes et les vignettes des agents sont refaites, pieds posés.',
+        'Les animations des agents ne sautent plus d’une image à l’autre, en jeu aussi.',
+      ],
+    },
     {
       version: '0.5.18',
       date: '23/11/2026',

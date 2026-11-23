@@ -44,13 +44,16 @@ export function preparerCuit(doc) {
         bz = -bz;
         bw = -bw;
       }
-      // mêmes seuils que three : identiques → a ; presque identiques → mélange linéaire normalisé ; sinon slerp
+      // presque identiques → mélange linéaire normalisé ; sinon slerp. § E5.AP (mesuré) : les pistes sont en Float32, un
+      // quaternion n'y est pas tout à fait unitaire ; avec le seuil de three (« c < 1 » sinon a), deux images presque
+      // identiques donnaient c ≥ 1 et l'os restait sur l'image a tout l'intervalle, puis sautait à l'image suivante
+      // (racine du Holding Idle du Bastion : 0,5 mm, pied 0,8 mm d'un coup) — le mélange est maintenant continu
       let k0 = 1;
       let k1 = 0;
       let norm = false;
-      if (f !== 0 && c < 1) {
+      if (f !== 0) {
         const s2 = 1 - c * c;
-        if (s2 <= Number.EPSILON) {
+        if (c >= 1 - 1e-6 || s2 <= Number.EPSILON) {
           k0 = 1 - f;
           k1 = f;
           norm = true;
