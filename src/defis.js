@@ -42,7 +42,7 @@ const baseCumul = new Int32Array(DEFI_COUNT); // part « toutes parties » lue d
 // Textes des notifications (construits une fois, § E4.0.5) : lus par ui.toastSucces
 export const toastName = [];
 export const toastReward = [];
-const summary = { killsByType, boss: 0, elites: 0, coffres: 0, fragments: 0, vagues: 0, mortCause: 0 };
+const summary = { killsByType, boss: 0, elites: 0, coffres: 0, fragments: 0, vagues: 0, mortCause: 0, mort: false }; // mort : § E5.X10
 
 /** Nom affiché de la récompense d'une clé ('agent:bastion' → 'Bastion'). Hors combat. */
 export function rewardName(key) {
@@ -240,6 +240,7 @@ export function finishRun(mortCause = 0) {
   if (meta.isRunCounted()) return null;
   flush();
   summary.mortCause = mortCause;
+  summary.mort = arguments.length > 0; // § E5.X10 : seul enterGameOver passe la cause (quitter, recommencer, fermer : abandon)
   summary.boss = CNT[C_BOSS];
   summary.elites = CNT[C_ELITES];
   summary.coffres = coffresOuverts();

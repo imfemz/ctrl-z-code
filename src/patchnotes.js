@@ -4,8 +4,19 @@
 // Changer `version` rallume la pastille « NOUVEAU » chez tous les joueurs (PATCHNOTES_UI.cleVue).
 // Sources : git log et ARCHITECTURE.md (plan addictif, étapes 1 à 4).
 export const PATCHNOTES = {
-  version: '0.5.16',
+  version: '0.5.17',
   entrees: [
+    {
+      version: '0.5.17',
+      date: '23/11/2026',
+      titre: 'Vos stats',
+      lignes: [
+        'Le jeu garde le résumé de vos 20 dernières parties : agent, vague atteinte, durée, cause de la défaite, cartes prises.',
+        'Nouveau bouton « Copier mes stats » dans la pause et en bas du Noyau : collez le texte dans la fiche de test pour nous aider à équilibrer le jeu.',
+        'Les relances de cartes sont maintenant comptées dans vos statistiques.',
+        'Quand un coffre s’ouvre ou qu’une élite arrive, la ligne du palier ne passe plus à travers le titre.',
+      ],
+    },
     {
       version: '0.5.16',
       date: '23/11/2026',

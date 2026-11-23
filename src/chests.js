@@ -39,6 +39,7 @@ import { CARRIER_RARITY, CHEST_FLAG, END_LOOT } from './config.js'; // § E2.G b
 import { ELITES, CHEST_FLAG_BOSS, RARITY_COUNT, bossRank, eliteChestSize } from './config.js'; // § E3.A : coffres de 1, 3 ou 5 lots
 import { ARSENAL_RULES } from './config.js'; // § E3.N : bannissement d'une arme quand l'arsenal épuisé ouvre les autres
 import { EVOLUTIONS, EVOLUTION_RULES, LOT_EVOLUTION } from './config.js'; // § E3.B : lot d'évolution
+import * as journal from './journal.js'; // § E5.X10 (audit I5) : lots pris, relances, passes (journal des parties)
 import { ARGF, BANS, E, F_X, F_Z, P, mods, run } from './state.js';
 import { RECAP_T } from './config.js'; // § E5.E.2 : récap des ramassages
 import { RAM_N } from './ramassage.js';
@@ -944,6 +945,9 @@ function applyLot(lot) {
   }
   takenByKind[lot.kind]++;
   takenByRarity[lot.rarity]++;
+  //#region e5:X10-journal
+  journal.carte(lot.name, lot.kind === LOT.WEAPON_NEW ? journal.SORTE.ARME_NEUVE : lot.kind === LOT.WEAPON_UP ? journal.SORTE.AMELIORATION : lot.kind === LOT.ITEM ? journal.SORTE.OBJET_COFFRE : lot.kind === LOT.OVERCHARGE ? journal.SORTE.SURVOLTAGE : lot.kind === LOT_EVOLUTION ? journal.SORTE.EVOLUTION : journal.SORTE.FRAGMENTS);
+  //#endregion e5:X10-journal
   return PICK.OK;
 }
 
@@ -955,6 +959,7 @@ export function reroll() {
   if (!(run.rerolls > 0)) return PICK.NO_CHARGE;
   run.rerolls--;
   rerolled++;
+  journal.relance(); // § E5.X10 : stats.relances
   rollLots(null);
   return PICK.OK;
 }
@@ -967,6 +972,7 @@ export function skip() {
   if (!(run.skips > 0)) return PICK.NO_CHARGE;
   run.skips--;
   skipped++;
+  journal.passe(); // § E5.X10
   if (view.guarantee >= 0) declined++; // § E2.S S1 : coffre passé avec une arme garantie
   const per = CFG.CHOICES && CFG.CHOICES.skipFragmentsPerWave > 0 ? CFG.CHOICES.skipFragmentsPerWave : CHESTS.skipFragmentsPerWave;
   progression.addFragments(per * (run.wave > 0 ? run.wave : 1));

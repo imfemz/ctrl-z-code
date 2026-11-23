@@ -11,6 +11,7 @@ import { FRAG } from './defis.js'; // § E4.A : fragments gagnés dans la partie
 import { RARITIES, chestRarity } from './config.js'; // § E2.F : cartes d'objet (rareté tirée comme celle d'un lot de coffre)
 import { lignesCarteO } from './config.js'; // § E5.O : soin, synergie, Conversion (une ligne chacun)
 import { synergieArmesX7 } from './config.js'; // § E5.X7 (H12) : armes à critiques dans « Utile avec »
+import * as journal from './journal.js'; // § E5.X10 (audit I5) : cartes prises, relances, passes (journal des parties)
 
 let ctx = null;
 
@@ -267,6 +268,7 @@ export function debugItemCards(on) {
 export function rerollChoices() {
   if (rolled <= 0 || run.pendingChoices <= 0 || run.rerolls <= 0) return false;
   run.rerolls--;
+  journal.relance(); // § E5.X10 : stats.relances
   return roll(true);
 }
 
@@ -277,6 +279,7 @@ export function rerollChoices() {
 export function skipChoice() {
   if (rolled <= 0 || run.pendingChoices <= 0 || run.skips <= 0) return false;
   run.skips--;
+  journal.passe(); // § E5.X10
   addFragments(CHOICES.skipFragmentsPerWave * (run.wave > 1 ? run.wave : 1));
   run.pendingChoices--;
   rolled = 0;
@@ -338,6 +341,7 @@ export function applyChoice(index) {
   ctx.weapons.markDirty();
   ctx.player.onModsChanged();
   if (heal > 0) ctx.player.heal(heal); // après onModsChanged : le soin est borné aux NOUVEAUX PV max
+  journal.carte(c.name, journal.SORTE.NIVEAU); // § E5.X10 : nom déjà fait (bonus, objet, « Réparation ») : rien d'alloué
   return true;
 }
 

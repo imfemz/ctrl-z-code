@@ -325,6 +325,7 @@ export function build(deps) {
     D.audio.play(D.SFX.UI_CLICK);
     D.actions.quitHub();
   })); // menus « Pile » : sans touche affichée (Échap revient toujours)
+  if (D.journalX10) pied.appendChild(D.journalX10('sr-x10-hub')); // § E5.X10 (audit I5) : « Copier mes stats »
   piedJouer = D.button(T.jouer, 'sr-btn sr-primary', () => D.actions.hubPlay()); // l'agent de départ (« Jouer · <agent> »)
   piedJouerLabel = piedJouer.querySelector('.sr-btn-label');
   pied.appendChild(piedJouer);

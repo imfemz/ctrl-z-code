@@ -9292,3 +9292,145 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root .sr-hud [data-x7] * {
 .sr-shop-soin {
   color: var(--sr-vert, #5cff8a);
 }
+
+/* =====================================================================================================================
+   § E5.X10 (audit I5, lot 17) : « Copier mes stats » — pause (bouton « Pile » sous Paramètres / Touches) et Noyau (pied,
+   en mots comme « Retour »). « Copié » : visible ~2,4 s puis s'efface (la fin de l'animation retire la classe, ui.js).
+   Copie refusée : la zone de texte apparaît, sélectionnée, pour une copie à la main.
+   ===================================================================================================================== */
+.sr-x10 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.sr-x10 > .sr-x10-ligne {
+  position: relative;
+}
+.sr-x10-retour {
+  position: absolute;
+  right: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 400 1.05rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-vert, #74e09a);
+  text-shadow: 0 0.1rem 0.4rem #000;
+  pointer-events: none;
+  opacity: 0;
+}
+.sr-x10-retour.sr-x10-on-a {
+  animation: sr-x10-copie-a 2.4s linear both;
+}
+.sr-x10-retour.sr-x10-on-b {
+  animation: sr-x10-copie-b 2.4s linear both;
+}
+@keyframes sr-x10-copie-a {
+  0% { opacity: 0; }
+  6% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes sr-x10-copie-b {
+  0% { opacity: 0; }
+  6% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.sr-x10-repli {
+  display: none;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0 1.5rem 0 var(--pile-gauche, 1.5rem);
+}
+.sr-x10-repli.sr-x10-repli-on {
+  display: flex;
+}
+.sr-x10-repli-t,
+.sr-x10-repli-l {
+  margin: 0;
+  font: 400 1rem/1.3 var(--sr-mono);
+  color: var(--pile-doux, #c9d6cf);
+}
+.sr-x10-repli-t {
+  color: var(--pile-jaune, #f4f050);
+}
+.sr-x10-zone {
+  width: 100%;
+  min-height: 9rem;
+  margin-top: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  font: 400 0.85rem/1.35 ui-monospace, Menlo, Consolas, monospace;
+  color: var(--pile-texte, #e9f0ec);
+  background: rgba(7, 11, 16, 0.92);
+  border: 1px solid var(--pile-filet, rgba(233, 240, 236, 0.14));
+  resize: vertical;
+  white-space: pre-wrap;
+  overflow: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto;
+  cursor: text;
+}
+.sr-x10-cache {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+/* Noyau : au pied, entre « Retour » et l'aide ; le bouton en mots (style du pied), « Copié » juste à sa droite */
+.sr-hub-pied > .sr-x10 {
+  width: auto;
+  flex: 0 0 auto;
+}
+.sr-hub-pied .sr-x10 > .sr-x10-ligne {
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  width: auto;
+}
+.sr-hub-pied .sr-x10-retour {
+  position: static;
+  transform: none;
+}
+/* au Noyau, la zone de copie à la main s'ouvre AU-DESSUS du pied (le pied est en bas de l'écran) */
+.sr-hub-pied .sr-x10-repli {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 0.6rem);
+  width: min(52rem, 70vw);
+  padding: 0.7rem 0.9rem;
+  background: rgba(7, 11, 16, 0.96);
+  border: 1px solid var(--pile-filet, rgba(233, 240, 236, 0.14));
+  z-index: 5;
+}
+/* pause : la zone de copie à la main s'ouvre À DROITE de la liste, comme le panneau des Paramètres (elle ne pousse plus
+   « Quitter la partie » hors de l'écran) */
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel > .sr-x10 {
+  position: static;
+}
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-x10-repli {
+  position: absolute;
+  left: 32rem;
+  top: 4.5rem;
+  width: 36rem;
+  max-height: calc(100% - 7rem);
+  margin: 0;
+  padding: 1.4rem 1.5rem;
+  background: rgba(7, 11, 16, 0.94);
+  border: 1px solid var(--pile-filet, rgba(233, 240, 236, 0.14));
+  z-index: 3;
+}
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-x10-zone {
+  min-height: 20rem;
+}
+/* « Copié » sur la barre jaune (bouton survolé) : en encre sombre, comme le mot du bouton */
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-x10-ligne:hover > .sr-x10-retour {
+  color: var(--pile-nuit, #070b10);
+  text-shadow: none;
+}

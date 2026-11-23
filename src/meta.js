@@ -10,6 +10,10 @@ import {
 import { CAUSE_COUNT } from './config.js'; // § E5.Q (Femz, 21/11) : morts par cause, d'une partie à l'autre
 import { EVOLUTIONS } from './config.js'; // § E5.X7 (H2) : recette connue
 import { ITEMS } from './config.js'; // § E5.AL : objet retiré (ITEMS[id].retire) — jamais dans le tirage
+//#region e5:X10-journal
+import { JOURNAL } from './config.js';
+import * as journal from './journal.js'; // § E5.X10 (audit I5) : journal des parties pour le playtest
+//#endregion e5:X10-journal
 
 function statsVierges() {
   return {
@@ -39,6 +43,7 @@ const data = {
   consignes: [], // § E5.L : consignes déjà montrées ('deplacer', 'dash', 'terminal') — une fois par profil
   stats: statsVierges(),
   lastRun: null, // résumé de la dernière partie (bilan), réécrit à chaque finishRun
+  journal: [], // § E5.X10 : les JOURNAL.max dernières parties (journal.entree), de la plus ancienne à la plus récente
 };
 
 // Tableaux typés lus par les filtres du tirage (§ E4.A.5) sans appel de fonction ; figés au départ d'une partie
@@ -74,6 +79,7 @@ function reinit() {
   for (const k in data.skins) delete data.skins[k];
   data.stats = statsVierges();
   data.lastRun = null;
+  data.journal.length = 0; // § E5.X10
 }
 
 function objetLisible(x) {
@@ -174,6 +180,7 @@ export function load(preset = null) {
     if (Array.isArray(s.meilleureVagueAgent)) for (let a = 0; a < AGENT_COUNT; a++) S.meilleureVagueAgent[a] = nat(s.meilleureVagueAgent[a]);
     if (Array.isArray(s.mortsParCause)) for (let c = 0; c < CAUSE_COUNT; c++) S.mortsParCause[c] = nat(s.mortsParCause[c]); // § E5.Q
     data.lastRun = o.lastRun && typeof o.lastRun === 'object' ? o.lastRun : null;
+    data.journal.push(...journal.lisible(o.journal)); // § E5.X10 : illisible = journal vide, jamais une erreur
   } else {
     // Migration v1 → v2 (§ E4.A.1) + rattrapage du record : les succès de vague que le record prouve sont accordés,
     // sans Cycles (Femz et ses testeurs ont déjà joué). Écrit tout de suite (hors combat : init).
@@ -365,6 +372,7 @@ export function beginRun() {
   runState.counted = false;
   runState.gained = 0;
   runState.succesRun.length = 0;
+  journal.debut(); // § E5.X10
 }
 
 /**
@@ -424,6 +432,13 @@ export function finishRun(run, summary) {
   if (mc > 0 && mc < CAUSE_COUNT) S.mortsParCause[mc]++;
   const a = run.agent >= 0 && run.agent < AGENT_COUNT ? run.agent : 0;
   if (wave > S.meilleureVagueAgent[a]) S.meilleureVagueAgent[a] = wave;
+  //#region e5:X10-journal
+  // § E5.X10 (audit I5) : relances de cartes de la partie (stats.relances, déclaré au § E4.A.1, jamais rempli avant), et
+  // l'entrée du journal — écrite avec le reste, une fois par partie (garde runState.counted)
+  S.relances += journal.relancesPartie();
+  data.journal.push(journal.entree(run, summary, Date.now()));
+  if (data.journal.length > JOURNAL.max) data.journal.splice(0, data.journal.length - JOURNAL.max);
+  //#endregion e5:X10-journal
   data.lastRun = {
     date: Date.now(),
     agent: a,
@@ -479,6 +494,18 @@ export function getStats() {
 export function getLastRun() {
   return data.lastRun;
 }
+
+//#region e5:X10-journal
+/** § E5.X10 : les parties du journal (de la plus ancienne à la plus récente ; lecture seule). */
+export function getJournal() {
+  return data.journal;
+}
+
+/** § E5.X10 : le texte de « Copier mes stats » (hors combat : pause, Noyau). */
+export function journalTexte() {
+  return journal.texte(data.journal);
+}
+//#endregion e5:X10-journal
 
 /** Progression remise à zéro (bouton du hub, avec confirmation) : le record et les réglages ne sont pas touchés. */
 export function reset() {

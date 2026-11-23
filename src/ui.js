@@ -46,6 +46,7 @@ import { fragmentsPasse, rareteTexte } from './config.js'; // § E5.L : lot 1 du
 import { HUD_PALIERS, MARCHAND_M3, MARCHAND_PHRASES, PIECE, PIECE_CYCLE, RECAP, RECAP_T, palierNiveau, pieceSequence } from './config.js'; // § E5.E : HUD V5, récap, marchand M3, pièce
 import { RETOURS_GUIDE } from './config.js'; // § E5.Q : cause de la défaite (C2), éclat de la barre au soin (B14)
 import { DECRYPTAGE_X7, HUD_X7 } from './config.js'; // § E5.X7 : soin du marchand, bulles et libellés du HUD, légende de la fiche
+import { JOURNAL } from './config.js'; // § E5.X10 : « Copier mes stats » (pause, Noyau)
 // ----- § E5.X6 (lot 7 : le jeu dit quand une action est impossible) — D1 jauge et tremblement de la case de la Frappe
 // éclair, D5 / H7 bandeau du terminal (touche à portée, « approchez-vous » sinon, temps restant), F11 marchand (« il manque
 // N », prix qui tremble au refus). Compteurs entiers lus à chaque image, DOM écrit seulement quand un entier change.
@@ -2171,6 +2172,7 @@ function buildPause() {
   // § E3.I (img1) : réglages et touches repliés derrière deux boutons (bloc e3:I-pause en fin de fichier) ; § E5.AG (Femz,
   // 22/11) : en carte mère, plus de bouton « Touches » — le bloc est dans l'onglet Commandes de la fenêtre Paramètres
   buildPlis(panel, () => {}, keysBlock); // § E5.R : « Paramètres » ouvre la fenêtre Paramètres
+  panel.appendChild(journalX10('sr-x10-pause')); // § E5.X10 (audit I5) : « Copier mes stats »
   const fin = el('div', 'sr-btn-col sr-pause-fin');
   if (CARTE) fin.append(recommencer); // § E5.AG : en bas, juste au-dessus de « Quitter la partie »
   fin.append(confirmable('Quitter la partie', 'sr-btn sr-pause-quitter', () => actions.quitToTitle())); // § E5.S (A6)
@@ -2874,6 +2876,7 @@ function buildHub() {
     creerFormule,
     recetteEvolution,
     recetteFusion,
+    journalX10, // § E5.X10 : « Copier mes stats » au pied du Noyau (ui-hub.js n'importe que config.js)
   });
   scr.addEventListener('pointerdown', fermerDetailDehors); // § E4.L.1 : la fenêtre d'élément de la fiche au Noyau
   plxBind(scr);
@@ -3866,6 +3869,7 @@ export function setScreen(id, data) {
   // vers le bas (et la colonne d'objets vers la gauche), en glissant ; il revient à la reprise. Hors combat.
   if (hud) hud.classList.toggle('sr-hud-retire', id === SCREEN.PAUSE || id === SCREEN.GAMEOVER);
   bulleX7Cacher(); // § E5.X7 : un écran s'ouvre, la bulle du HUD se ferme
+  journalX10Reset(); // § E5.X10 : « Copié » et la zone de copie à la main se referment
   // En partie (aucun écran), la souris ne sert à rien : son curseur est caché.
   document.documentElement.classList.toggle('sr-en-jeu', !shown);
 }
@@ -4345,6 +4349,7 @@ export function update(realDt) {
     }
   }
   if (palier !== null) majPalier(shownState, wave, clock);
+  if (palier !== null) palierMasqueF7(); // § E5.X10 (F7) : piste cachée sous un écran ou une bannière
   if (palX6Term !== null) majTerminalX6(realDt); // § E5.X6 (D5, H7)
   // Record (§ E1.D) : la vague du meilleur score (« — » sans record) ; cyan dès qu'il est battu pendant la partie.
   const best = game.best;
@@ -6108,3 +6113,143 @@ export function bulleX7Inspect() {
   if (bulleX7 === null || bulleX7Cle === '') return null;
   return { cle: bulleX7Cle, texte: [...bulleX7.children].map((n) => n.textContent) };
 }
+
+//#region e5:X10-journal
+// ===== § E5.X10 — lot 17 de l'audit (I5) : « Copier mes stats » pour le playtest ========================================
+// Un bouton (pause, Noyau) qui met le journal des parties (meta.journalTexte, src/journal.js) dans le presse-papiers.
+// Ordre des essais : navigator.clipboard.writeText (navigateur, app de bureau) ; s'il est refusé (permission, fenêtre
+// sans focus, page non sûre) : document.execCommand('copy') sur une zone de texte posée hors de l'écran ; si lui aussi
+// échoue : la zone de texte s'affiche, texte sélectionné, pour une copie à la main. Hors combat (clic du joueur).
+// « Copié » : une classe animée par le CSS (ui.css, bloc § E5.X10) ; sa fin (animationend) la retire — aucune minuterie.
+const journauxX10 = []; // { box, retour, repli, zone, flip }
+const X10_RETOUR = ['sr-x10-retour', 'sr-x10-retour sr-x10-on-a', 'sr-x10-retour sr-x10-on-b'];
+const x10 = { copies: 0, execCopies: 0, replis: 0, dernier: '' }; // compteurs lus par les tests (journalX10Inspect)
+
+function journalX10(cls) {
+  const box = el('div', 'sr-x10 ' + cls);
+  const w = { box, retour: null, repli: null, zone: null, flip: false };
+  const b = button(JOURNAL.ui.bouton, 'sr-btn sr-x10-bouton', click(() => copierX10(w)));
+  const retour = el('span', X10_RETOUR[0], JOURNAL.ui.copie);
+  retour.setAttribute('role', 'status');
+  retour.addEventListener('animationend', () => {
+    retour.className = X10_RETOUR[0];
+  });
+  const ligne = el('div', 'sr-x10-ligne sr-btn-col');
+  ligne.append(b, retour);
+  const repli = el('div', 'sr-x10-repli');
+  repli.append(el('p', 'sr-x10-repli-t', JOURNAL.ui.refus), el('p', 'sr-x10-repli-l', JOURNAL.ui.refusAide));
+  box.append(ligne, repli);
+  w.retour = retour;
+  w.repli = repli;
+  journauxX10.push(w);
+  return box;
+}
+
+function copierX10(w) {
+  const t = ctx.meta && ctx.meta.journalTexte ? ctx.meta.journalTexte() : '';
+  x10.dernier = t;
+  w.repli.classList.remove('sr-x10-repli-on');
+  if (w.zone !== null) {
+    w.zone.remove();
+    w.zone = null;
+  }
+  const ok = () => {
+    x10.copies++;
+    w.flip = !w.flip;
+    w.retour.className = X10_RETOUR[w.flip ? 1 : 2];
+  };
+  const refus = () => {
+    if (execCopieX10(t)) {
+      x10.execCopies++;
+      ok();
+      return;
+    }
+    x10.replis++;
+    w.retour.className = X10_RETOUR[0];
+    // la zone n'existe que le temps du repli (ui.test : aucun champ focalisable en dehors des curseurs et du pseudo) ;
+    // tabindex −1 comme eux : Tab ne l'atteint jamais, elle est seulement sélectionnée pour la copie à la main
+    if (w.zone === null) {
+      w.zone = el('textarea', 'sr-x10-zone');
+      w.zone.readOnly = true;
+      w.zone.spellcheck = false;
+      w.zone.rows = 6;
+      w.zone.tabIndex = -1;
+      w.zone.setAttribute('aria-label', JOURNAL.ui.bouton);
+      w.repli.appendChild(w.zone);
+    }
+    w.zone.value = t;
+    w.repli.classList.add('sr-x10-repli-on');
+    w.zone.focus();
+    w.zone.select();
+  };
+  let p = null;
+  try {
+    const cb = navigator.clipboard;
+    if (cb && typeof cb.writeText === 'function') p = cb.writeText(t);
+  } catch (e) {
+    p = null;
+  }
+  if (p && typeof p.then === 'function') p.then(ok, refus);
+  else refus();
+}
+
+/** 2e essai (presse-papiers moderne refusé) : copie « à l'ancienne » d'une zone posée hors de l'écran. Rend true si copié. */
+function execCopieX10(t) {
+  const z = el('textarea', 'sr-x10-cache');
+  z.value = t;
+  z.readOnly = true;
+  z.tabIndex = -1;
+  root.appendChild(z);
+  let fait = false;
+  try {
+    z.select();
+    fait = document.execCommand('copy') === true;
+  } catch (e) {
+    fait = false;
+  }
+  z.remove();
+  return fait;
+}
+
+/** Un écran s'ouvre ou se ferme : « Copié » et la zone de copie à la main disparaissent. */
+function journalX10Reset() {
+  for (let k = 0; k < journauxX10.length; k++) {
+    const w = journauxX10[k];
+    if (w.retour.className !== X10_RETOUR[0]) w.retour.className = X10_RETOUR[0];
+    if (w.repli.classList.contains('sr-x10-repli-on')) w.repli.classList.remove('sr-x10-repli-on');
+    if (w.zone !== null) {
+      w.zone.remove();
+      w.zone = null;
+    }
+  }
+}
+
+/** Tests : compteurs de copie et état des boutons (pause, Noyau). */
+export function journalX10Inspect() {
+  return {
+    copies: x10.copies,
+    execCopies: x10.execCopies,
+    replis: x10.replis,
+    dernier: x10.dernier,
+    boutons: journauxX10.map((w) => ({ cls: w.box.className, retour: w.retour.className, repli: w.repli.classList.contains('sr-x10-repli-on'), zone: w.zone !== null ? w.zone.value : '' })),
+  };
+}
+
+// ----- § E5.X10, F7 (audit F, mineur) : la piste du palier (« MARCHAND APRÈS LA VAGUE 4 ») passait sous le surtitre des
+// écrans de choix (« AGENT / CACHE DÉCHIFFRÉE ») et des bannières (« AGI / ÉLITE DÉTECTÉE ») : deux textes l'un sur
+// l'autre. Elle est cachée tant qu'un écran est ouvert ou qu'une bannière À SURTITRE est à l'écran (une bannière sans
+// surtitre, « Vague 2 », ne la touche pas : elle reste lisible, et le terminal posé à la bascule se voit tout de suite).
+// visibility (pas la classe : majPalier la réécrit) ; écrit seulement au changement — chaînes constantes, rien d'alloué.
+const F7 = new Int8Array(1).fill(-1);
+function palierMasqueF7() {
+  const m = screen !== SCREEN.NONE || (T[T_BANNER] > 0 && bannerKicker.style.display !== 'none') ? 1 : 0;
+  if (m === F7[0]) return;
+  F7[0] = m;
+  palier.style.visibility = m === 1 ? 'hidden' : '';
+}
+
+/** Tests : la piste est-elle masquée par la règle F7 (1), montrée (0), pas encore évaluée (−1) ? */
+export function palierF7Inspect() {
+  return F7[0];
+}
+//#endregion e5:X10-journal

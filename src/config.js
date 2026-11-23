@@ -9352,3 +9352,57 @@ SYNERGIES.cartes.damage = { objets: ['burn', 'virus', 'shrapnel'] }; // « Utile
   });
 }
 //#endregion e5:X9-katana-puissance
+
+//#region e5:X10-journal
+// § E5.X10 (audit I5, lot 17 de SYNTHESE-3 ; Femz 23/11 « go ») : journal LOCAL des dernières parties, pour le playtest.
+// Gardé dans la méta (STORAGE.metaKey, champ `journal`), écrit une fois en fin de partie (meta.finishRun) ; bouton
+// « Copier mes stats » dans la pause et au Noyau (texte lisible, à coller dans la fiche de playtest). Rien n'est envoyé.
+export const JOURNAL = {
+  max: 20, // parties gardées (les plus anciennes sortent)
+  cartesMax: 80, // cartes notées par partie (au-delà : comptées, pas nommées)
+  texteMax: 60, // caractères au plus d'un nom de carte relu dans la sauvegarde
+  rejoueSecondes: 60, // « rejoue dans la minute après une défaite » : écart entre la fin d'une partie et le début de la suivante
+  topCartes: 5, // cartes citées dans le résumé
+  // origine d'une carte (journal.carte) → ce qu'on écrit après son nom
+  sortes: ['', ' (nouvelle arme)', ' (amélioration)', '', ' (survoltage)', '', ' (évolution)'],
+  fragmentsCoffre: 'Fragments (coffre)', // un lot de fragments, quel que soit son montant
+  ui: {
+    bouton: 'Copier mes stats',
+    copie: 'Copié',
+    refus: 'Copie bloquée par le navigateur.',
+    refusAide: 'Sélectionnez le texte ci-dessous, puis copiez-le.',
+  },
+  textes: {
+    titre: 'CTRL+Z {v} · mes statistiques de playtest',
+    date: 'Copié le {d}',
+    vide: 'Aucune partie terminée pour l’instant.',
+    parties: 'Mes {n} dernières parties (la plus récente en premier) :',
+    partiesUne: 'Ma dernière partie :',
+    resume: 'Résumé',
+    nParties: 'Parties : {n}',
+    vagueMoyenne: 'Vague moyenne : {n}',
+    vagueMax: 'Meilleure vague : {n}',
+    dureeMoyenne: 'Durée moyenne : {n}',
+    cause: 'Cause de mort la plus fréquente : {c}, {n} fois',
+    causes: 'Causes de mort les plus fréquentes : {c}, {n} fois chacune', // égalité
+    causeAucune: 'Cause de mort la plus fréquente : aucune mort',
+    abandons: 'Parties quittées : {n}',
+    cartes: 'Cartes les plus prises : {c}',
+    cartesAucune: 'Cartes les plus prises : aucune',
+    relances: 'Relances de cartes : {n} par partie',
+    rejoue: 'Rejoue dans la minute après une mort : {a} fois sur {b}',
+    rejoueAucune: 'Rejoue dans la minute après une mort : pas encore mesurable',
+    // une partie, en morceaux joints par « · »
+    vague: 'vague {n}',
+    niveau: 'niveau {n}',
+    boss: 'boss battus : {n}',
+    mort: 'mort : {c}',
+    mortInconnue: 'mort',
+    abandon: 'partie quittée',
+    relancesP: 'relances : {n}',
+    fragments: 'fragments gagnés : {g}, perdus : {p}',
+    cartesP: 'cartes ({n}) : {c}',
+    cartesPVide: 'aucune carte',
+  },
+};
+//#endregion e5:X10-journal
