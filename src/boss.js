@@ -46,8 +46,21 @@ import {
   waveHpMul,
 } from './config.js';
 import { E, P, PRIO, rand, run } from './state.js';
+import { ARGF, F_T, F_V, F_X, F_Z } from './state.js'; // § E5.X8
 import { CHESTS, CHEST_FLAG } from './config.js'; // § E2.C ; § E2.G bis (coffre du boss gardé)
 import { CHEST_FLAG_BOSS } from './config.js'; // § E3.A : taille du coffre du boss
+//#region e5:X8-lot8
+import { LOT8 } from './config.js'; // § E5.X8 (E9) : récupération lisible, récupération après les obus
+// XB : [0] × émissifs, [1] s entre deux bouffées, [2] minuterie de la vapeur, [3] hauteur, [4] rayon, [5] gain du son,
+// [6] sa vitesse, [7] × émissifs appliqué en ce moment (1 hors récupération)
+const XB = new Float64Array([LOT8.bossRecup.emissifs, LOT8.bossRecup.vapeurEcart, 0, LOT8.bossRecup.vapeurHauteur, LOT8.bossRecup.vapeurRayon, LOT8.bossRecup.son.gain, LOT8.bossRecup.son.vitesse, 1]);
+const XB_SON = LOT8.bossRecup.son.id | 0;
+const XB_VAPEUR = LOT8.bossRecup.vapeurCouleur;
+let recX8 = 0; // 1 = le boss est en récupération (S_RECOVER) à la dernière image
+let recupsX8 = 0; // récupérations commencées (tests)
+let vapeursX8 = 0; // bouffées de vapeur (tests)
+let recupsObusX8 = 0; // récupérations après les obus (tests)
+//#endregion e5:X8-lot8
 import { CAUSE } from './config.js'; // § E5.Q (C2) : cause des coups du boss ; (B13) sons d'annonce par attaque
 import { CONFORT_FLASHS as CF } from './config.js'; // § E5.X5 (audit C12) : réglage « Flashs »
 // Animation (étape « animations », ARCHITECTURE.md § Z sexies) : le corps en pièces (marche à genoux, pieds posés,
@@ -511,6 +524,9 @@ export function reset() {
   uFxOverlay.y = 0;
   uBoost.value = RENDER.emissiveBoost;
   uHole.w = 0;
+  recX8 = 0; // § E5.X8
+  XB[7] = 1;
+  recupsX8 = vapeursX8 = recupsObusX8 = 0;
   render.commit(discMesh, 0);
   render.commit(ringMesh, 0);
   render.commit(quadMesh, 0);
@@ -744,6 +760,7 @@ export function update(dt) {
   if (i >= 0 && E.alive[i] === 1) {
     if (E.uid[i] !== trackedUid) adopt(i, run.wave); // boss posé directement dans E : pris en charge, en phase 1
     updateBoss(i, dt);
+    recupX8F(i, dt); // § E5.X8 (E9)
   } else enemies.SHIELDRING[4] = 0;
   // animation (§ Z sexies) : phase du pas sur la vitesse réelle, gestes, appuis ; temps des obus et invocations
   bossCorps.update(dt);
@@ -867,6 +884,8 @@ function adopt(i, wave) {
   phase = 1;
   flashDue = false;
   ignited = false;
+  recX8 = 0; // § E5.X8
+  XB[7] = 1;
   curAttack = ATK_NONE;
   mortarLeft = 0;
   summonLeft = 0;
@@ -1357,7 +1376,14 @@ function updateBoss(i, dt) {
     case S_CAST: {
       tLean = -M.castLean;
       if (M.telegraphGlow > tGlow) tGlow = M.telegraphGlow;
-      if (E.timer[i] <= 0) E.state[i] = S_CHASE; // les obus tombent pendant qu'il reprend sa marche
+      if (E.timer[i] <= 0) {
+        // § E5.X8 (E9) : une récupération après le tir (les obus tombent pendant ce temps), puis il reprend sa marche
+        if (LOT8.bossRecup.obus > 0) {
+          E.state[i] = S_RECOVER;
+          E.timer[i] = LOT8.bossRecup.obus;
+          recupsObusX8++;
+        } else E.state[i] = S_CHASE;
+      }
       break;
     }
     case S_SUMMON: {
@@ -1464,6 +1490,55 @@ function ignite() {
   uBoost.value = phase === 3 ? BOSS.enrage.emissiveBoost : BOSS.phase2.emissiveBoost;
 }
 
+//#region e5:X8-lot8
+/**
+ * § E5.X8 (E9) : récupération lisible — à l'entrée de S_RECOVER, émissifs × XB[0] (uniformes écrits à l'entrée et à la
+ * sortie seulement : un flottant écrit dans { value } alloue, § V) et son de refroidissement ; pendant, une bouffée de
+ * vapeur toutes les XB[1] s au-dessus du corps.
+ */
+function recupX8F(i, dt) {
+  const rec = E.state[i] === S_RECOVER ? 1 : 0;
+  if (rec !== recX8) {
+    recX8 = rec;
+    XB[7] = rec === 1 ? XB[0] : 1;
+    uBoost.value = (ignited ? (phase === 3 ? BOSS.enrage.emissiveBoost : BOSS.phase2.emissiveBoost) : RENDER.emissiveBoost) * XB[7];
+    flickerStep = -1; // pièces de phase 2 : réécrites par sync (× XB[7])
+    if (rec === 1) {
+      recupsX8++;
+      XB[2] = 0;
+      ARGF[F_X] = E.x[i];
+      ARGF[F_Z] = E.z[i];
+      ARGF[F_V] = XB[5];
+      ARGF[F_T] = XB[6];
+      audio.playGainRateF(XB_SON);
+    }
+  }
+  if (rec === 0) return;
+  XB[2] -= dt;
+  if (XB[2] > 0) return;
+  XB[2] = XB[1];
+  vapeursX8++;
+  for (let q = 0; q < 3; q++) {
+    // trois bouffées autour du haut du corps (fx tire déjà dans rand : même flux que les autres effets)
+    const a = rand() * TWO_PI;
+    const r = XB[4] * (0.4 + 0.6 * rand());
+    ARGF[F_X] = E.x[i] + Math.sin(a) * r;
+    ARGF[F_V] = XB[3] + 0.6 * rand();
+    ARGF[F_Z] = E.z[i] + Math.cos(a) * r;
+    fx.spawnVapeurF(XB_VAPEUR);
+  }
+}
+/** § E5.X8 (tests) : récupérations du boss, bouffées de vapeur, récupérations après les obus, × émissifs en cours. */
+export function inspectX8(out) {
+  out.recups = recupsX8;
+  out.vapeurs = vapeursX8;
+  out.recupsObus = recupsObusX8;
+  out.emissifs = XB[7];
+  out.boost = uBoost !== null ? uBoost.value : 0;
+  return out;
+}
+//#endregion e5:X8-lot8
+
 // =====================================================================================================================
 // Écriture du rendu (F11)
 // =====================================================================================================================
@@ -1501,7 +1576,7 @@ export function sync() {
       const step = Math.floor(c * BOSS.phase2.flickerHz);
       if (step !== flickerStep) {
         flickerStep = step;
-        uBoostOverlay.value = (phase === 3 ? BOSS.enrage.emissiveBoost : BOSS.phase2.emissiveBoost) * (1 + (CF.reduits ? 0 : BOSS.phase2.flicker) * Math.sin(step * 2.4)); // § E5.X5 : Réduits = pas de vacillement
+        uBoostOverlay.value = (phase === 3 ? BOSS.enrage.emissiveBoost : BOSS.phase2.emissiveBoost) * (1 + (CF.reduits ? 0 : BOSS.phase2.flicker) * Math.sin(step * 2.4)) * XB[7]; // § E5.X5 : Réduits = pas de vacillement ; § E5.X8 : × émissifs en récupération
       }
     }
   } else if (arrival === A_DROP || arrival === A_LAND) {

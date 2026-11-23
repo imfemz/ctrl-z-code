@@ -4,8 +4,24 @@
 // Changer `version` rallume la pastille « NOUVEAU » chez tous les joueurs (PATCHNOTES_UI.cleVue).
 // Sources : git log et ARCHITECTURE.md (plan addictif, étapes 1 à 4).
 export const PATCHNOTES = {
-  version: '0.5.14',
+  version: '0.5.15',
   entrees: [
+    {
+      version: '0.5.15',
+      date: '23/11/2026',
+      titre: 'Combat équitable',
+      lignes: [
+        'Après un bond, un piqué, une charge ou une sortie de terre, les robots soufflent un instant : yeux éteints, ils ne blessent pas au contact.',
+        'Le boss fume et s’éteint quand il récupère, maintenant aussi après ses obus.',
+        'Élite « Phasé » : on voit quand elle devient intangible, vos coups qui la traversent font une gerbe grise, et elle ne frappe plus pendant ce temps.',
+        'Les tireurs montrent où ils visent avec un trait fin au sol.',
+        'La flaque du drone et la traînée de l’élite « Surchargé » blessent dès que votre agent marche dedans, comme les autres zones.',
+        'Élite « Instable » : ses disques ne se superposent plus ; une mine armée montre un anneau, une mine déclenchée se remplit et bipe.',
+        'Nouveaux sons : atterrissage du scanner, cercle de la foreuse, élan du bond et du piqué.',
+        'Katana et Lame de phase : votre agent ne file plus tout seul à travers la horde.',
+        'Puissance augmente aussi les dégâts de vos objets.',
+      ],
+    },
     {
       version: '0.5.14',
       date: '23/11/2026',

@@ -26,6 +26,7 @@ import { BOUCLIER } from './config.js'; // § E4.P : impact atténué et éclats
 import { LISIBILITE_GUIDE } from './config.js'; // § E5.P : chiffres hiérarchisés, rien d'allié sur le héros, éclats plafonnés
 import { CONFORT_FLASHS as CF } from './config.js'; // § E5.X5 (audit C12) : réglage « Flashs »
 import { ARGF, F_DX, F_DZ, F_V, F_X, F_Z, P, rand } from './state.js';
+import { LOT8 } from './config.js'; // § E5.X8 (E9) : vapeur du boss en récupération
 import { lookDuChargement } from './vfx/look.js'; // 17/11 : look des VFX
 
 let render = null;
@@ -1628,6 +1629,35 @@ export function spawnPuffF(colorHex) {
   Q[PB] = COL[o3 + 2] * F.gain;
   pushSpark(K_PUFF);
 }
+
+//#region e5:X8-lot8
+// § E5.X8 (E9) : vapeur du boss en récupération — une bouffée comme spawnPuffF, plus grosse, plus longue et qui monte
+// plus vite (LOT8.bossRecup) ; position dans ARGF[F_X], ARGF[F_V] (hauteur), ARGF[F_Z].
+const VAP = new Float64Array([LOT8.bossRecup.vapeurTaille, LOT8.bossRecup.vapeurVie, LOT8.bossRecup.vapeurMontee]);
+export function spawnVapeurF(colorHex) {
+  const x = ARGF[F_X];
+  const y = ARGF[F_V];
+  const z = ARGF[F_Z];
+  if (!(x * 0 === 0 && y * 0 === 0 && z * 0 === 0)) return;
+  render.writeColor(COL, C_TMP * 3, colorHex);
+  puffs++;
+  const o3 = C_TMP * 3;
+  Q[PX] = x;
+  Q[PY] = y;
+  Q[PZ] = z;
+  Q[PVX] = (rand() - 0.5) * 0.6;
+  Q[PVY] = VAP[2] * (0.7 + 0.6 * rand());
+  Q[PVZ] = (rand() - 0.5) * 0.6;
+  Q[PLIFE] = VAP[1] * (0.8 + 0.4 * rand());
+  Q[PW] = VAP[0] * 0.5 * (0.8 + 0.4 * rand());
+  Q[PL] = Q[PW];
+  Q[PROT] = rand() * TWO_PI;
+  Q[PR] = COL[o3] * FX.puff.gain;
+  Q[PG] = COL[o3 + 1] * FX.puff.gain;
+  Q[PB] = COL[o3 + 2] * FX.puff.gain;
+  pushSpark(K_PUFF);
+}
+//#endregion e5:X8-lot8
 
 /** Impact sur le joueur : gerbe rouge, anneau rouge à ses pieds, quelques éclats de sa carrosserie. */
 export function playerHit(x, z, srcX = x, srcZ = z) {

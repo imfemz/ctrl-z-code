@@ -8772,3 +8772,85 @@ export const TUTO_BORNES = {
   halo: [0.34, 0.16, 0.07], // opacité des paliers du halo (1, 2, 3 pixels d'art autour du triangle)
 };
 //#endregion e5:AE-tuto-bornes
+
+//#region e5:X8-lot8
+// Lot 8 de l'audit UX, côté robots (ARCHITECTURE.md § E5.X8 ; Femz, 23/11 : « E8 : oui, 0,6 s »). Lu par enemies.js,
+// anim/allure.js, enemies-e3.js, boss.js, elites.js, hazards.js. Sons existants seulement, rejoués par
+// audio.playGainRateF : sonie effective = sonie du manifeste + 20 log10(gain du manifeste × gain) ≤ −19 LU.
+export const LOT8 = {
+  // E8 — récupération après bond (rôdeur v2), piqué (drone v2), charge (blindé v2), sortie de terre (foreuse)
+  recup: {
+    secondes: 0.6, // s immobile, sans dégâts au contact (décision de Femz)
+    yeux: 0.08, // part gardée des émissifs (yeux, fentes) pendant la récupération
+    rallumage: 0.12, // s — les yeux se rallument sur la fin
+    ecrasement: 0.22, // écrasement ajouté (posture basse)
+    droneBaisse: 0.5, // part du survol perdue par le drone
+  },
+  // E9 — récupération du boss
+  bossRecup: {
+    emissifs: 0.3, // × émissifs du corps et des pièces de phase 2
+    obus: 0.6, // s de récupération après le tir des obus (avant : reprise immédiate de la marche)
+    vapeurEcart: 0.14, // s entre deux bouffées de vapeur
+    vapeurCouleur: 0xd9dee4,
+    vapeurHauteur: 3.4, // m — au-dessus du corps (BOSS.height ≈ 5)
+    vapeurRayon: 1.1, // m — autour de son axe
+    vapeurTaille: 1.1, // m — envergure d'une bouffée (fx.spawnVapeurF ; une bouffée ordinaire : 0,35)
+    vapeurVie: 0.9, // s
+    vapeurMontee: 1.6, // m/s
+    son: { id: SFX.SMOKE, gain: 1, vitesse: 0.7 }, // refroidissement : −29,5 LU
+  },
+  // E11 — élite Phasé
+  phase: {
+    opacite: 0.4, // part des pixels du corps gardés (trame ordonnée 4 × 4)
+    contour: [0.78, 0.84, 0.9], // couleur du contour (linéaire)
+    contourGain: 1.6,
+    contourSeuil: 0.7, // Fresnel (1 − N·V) au-delà duquel le pixel est contour (jamais tramé)
+    iconeHz: 2.5, // icône en Flashs Normaux (était 14 Hz)
+    ecart: 0.12, // s entre deux retours d'un coup ignoré (gerbe + son)
+    son: { id: SFX.SHIELD_BLOCK, gain: 0.7, vitesse: 1.5 }, // −31,1 LU
+  },
+  // G5 — visée du tireur
+  tireur: { longueur: 3, largeur: 0.15, gain: 1.5 },
+  // E18 — mine armée : contour seul de son rayon d'explosion
+  mine: { largeur: 0.07, gain: 1.6 }, // largeur en fraction du rayon ; gain × la couleur des zones
+  // E10 — sons propres aux robots
+  sons: {
+    bond: { id: SFX.BLADE, gain: 1, vitesse: 0.72 }, // souffle au départ du bond du rôdeur v2 : −24,2 LU
+    pique: { id: SFX.BLADE, gain: 0.8, vitesse: 1.25 }, // souffle au départ du piqué du drone v2 : −26,1 LU
+    atterrissageScanner: { id: SFX.COUP_PIED, gain: 1.4, vitesse: 1.2 }, // était DRILL (la foreuse) : −27,3 LU
+    cercleForeuse: { id: SFX.ANNONCE_SOL, gain: 1.2, vitesse: 0.62 }, // était BOSS_TELEGRAPH (la frappe du boss) : −25,5 LU
+  },
+};
+ELITES.icon.phaseBlinkHz = LOT8.phase.iconeHz; // E11 : ≤ 3 Hz (était 14)
+//#endregion e5:X8-lot8
+
+//#region e5:X9-katana-puissance
+// Décisions de Femz du 21/11 sur l'audit (ARCHITECTURE.md § E5.X9 ; docs/audit-guide/SYNTHESE-2.md, branche audit-cible).
+// Surcharges seulement : les lignes d'origine (régions e3:M-anim-shinobi-bastion, e3:Z-retours-1611, e5:O-noms-guide)
+// ne bougent pas.
+
+// ----- D4 (« réduire ») : le Katana et la Lame de phase ne font presque plus filer le héros sans touche -----
+COMBOS.iaido.dist = 0.8; // m — 2.6 : le dégainé faisait traverser la cible au héros (jusqu'à 7 m de dérive en 8 s)
+COMBOS.list[COMBO.BLADE].fente = [0.15, 0.15, 0.15, 0.15, 0.15]; // m — [0.35, 0.35, 0.35, 0.35, 0.5]
+COMBOS.list[COMBO.KATANA].fente = [0.15, 0.15, 0]; // m — [0.5, 0.5, 0] ; le dégainé garde sa traversée (iaido.dist)
+
+// ----- H1 (« oui ») : Puissance = +10 % de dégâts des armes ET des objets (items.js : strike) -----
+BONUS_O('damage').effet = 'Vos armes et vos objets font plus de dégâts.'; // 'Toutes vos armes font plus de dégâts.'
+SYNERGIES.cartes.damage = { objets: ['burn', 'virus', 'shrapnel'] }; // « Utile avec : Surchauffe, Virus, Éclats »
+// SYNERGIE_O et SYNERGIE_OBJET sont construits au chargement de la région e5:O-noms-guide / § E5.X7 : la ligne de cette
+// carte et la synergie inverse des trois objets sont recalculées ici, avec les mêmes règles.
+{
+  const b = PROGRESSION.bonuses.indexOf(BONUS_O('damage'));
+  const S = SYNERGIES.cartes.damage;
+  const noms = S.objets.map((k) => ITEMS.find((I) => I.key === k).name);
+  for (const ligne of SYNERGIE_O) ligne[b] = SYNERGIES.prefixe + noms.join(', ');
+  ITEMS.forEach((I, i) => {
+    const n = [];
+    for (const B of PROGRESSION.bonuses) {
+      const T = SYNERGIES.cartes[B.key];
+      if (T && T.objets && T.objets.includes(I.key)) n.push(B.name);
+    }
+    SYNERGIE_OBJET[i] = n.length ? SYNERGIES.prefixe + n.join(', ') : '';
+  });
+}
+//#endregion e5:X9-katana-puissance

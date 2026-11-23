@@ -21,6 +21,12 @@ import { DANGERS_GUIDE } from './config.js'; // § E5.M : mine annoncée, flaque
 import { CONFORT_FLASHS as CF } from './config.js'; // § E5.X5 (audit C12) : réglage « Flashs »
 import { COMBAT_GUIDE, PALETTE } from './config.js'; // § E5.N : disques des kamikazes qui ne s'additionnent pas
 import { CAUSE } from './config.js'; // § E5.Q (C2) : cause des coups reçus
+//#region e5:X8-lot8
+import { LOT8 } from './config.js'; // § E5.X8 : mine armée en contour (E18), obus de l'Instable en une couche (E17)
+let ringMesh = null; // anneaux des mines armées (contour seul de leur rayon d'explosion)
+let instableDisques = 0; // obus de l'Instable dessinés par le maillage « une couche » (tests)
+let anneauxMines = 0; // anneaux de mines armées dessinés à la dernière image (tests)
+//#endregion e5:X8-lot8
 
 let render = null;
 let damage = null;
@@ -61,6 +67,7 @@ SOUND[HAZ.LINE] = 1;
 SOUND[HAZ.PUDDLE] = 1;
 SON_ANNONCE[HAZ.LINE] = SFX.ANNONCE_SOL;
 SON_ANNONCE[HAZ.PUDDLE] = SFX.ANNONCE_SOL;
+SOUND[HAZ.DRILL] = 0; // § E5.X8 (E10) : le cercle de la foreuse a son bip propre (enemies-e3.js), plus BOSS_TELEGRAPH
 
 // Compteurs de la partie et minuterie des tics de flaque (flottant réécrit à chaque image : tableau typé, § V)
 const TIMERS = new Float64Array(1);
@@ -154,6 +161,16 @@ export function init(ctx) {
   });
   lineMesh.renderOrder = RENDER.decals.telegraph.order + 0.25;
   initKamikazes(); // § E5.N (point 6)
+  //#region e5:X8-lot8
+  // § E5.X8 (E18) : anneau d'une mine armée — contour seul (couleur des zones × LOT8.mine.gain), 0 appel de dessin sans mine
+  const ring = new THREE.RingGeometry(1 - LOT8.mine.largeur, 1, H.segments);
+  ring.rotateX(-Math.PI / 2);
+  ringMesh = render.createInstanced(render.makePart(ring, H.color, 0), render.createUnlitMaterial({ transparent: true, opacity: H.opacity }), CAPS.robotMines, {
+    instanceColor: true,
+    name: 'anneaux-mines',
+  });
+  ringMesh.renderOrder = RENDER.decals.telegraph.order + 0.25;
+  //#endregion e5:X8-lot8
 }
 
 function boost(part, gain) {
@@ -180,6 +197,7 @@ export function reset() {
   mineRobotHits = 0;
   minePlayerHits = 0;
   minesArmed = 0; // § E5.M
+  instableDisques = 0; // § E5.X8
 }
 
 /** Fin de vague (T5) : toutes les zones disparaissent, sans effet (§ E1.A règle 9). */
@@ -385,7 +403,8 @@ export function update(dt) {
       if (kind === HAZ.PUDDLE && hT[k] < FLAQUE_ARMEE) continue; // § E5.M (B9) : inoffensive pendant l'étalement + délai
       const dx = P.x - hX[k];
       const dz = P.z - hZ[k];
-      if (dx * dx + dz * dz >= hR[k] * hR[k]) continue;
+      const rd = hR[k] + P.rayonDegats; // § E5.X8 (E12) : rayon de dégâts du héros, comme les autres zones (était le centre)
+      if (dx * dx + dz * dz >= rd * rd) continue;
       if (damage.hitPlayer(hDmg[k], HURT.CONTACT, hX[k], hZ[k], hCause[k]) > 0) { // § E5.Q : flaque ou traînée
         TIMERS[0] = TICK;
         puddleHits++;
@@ -441,14 +460,20 @@ export function inspectE3(out) {
 
 /** F11 : décalques (matrices et gains écrits en ligne, § G.3) ; obus en vol ajoutés au maillage de src/tirs-canon.js (§ E4.J). */
 export function sync() {
-  syncKamikazes(); // § E5.N (point 6) : disques des kamikazes en mèche posés par enemies.sync
   if (count === 0) {
+    reduitsKamikazesX8(); // § E5.X8
+    syncKamikazes(); // § E5.N (point 6) : disques des kamikazes en mèche posés par enemies.sync
     render.commit(discMesh, extraD); // § E5.M : décalques posés par les robots (enemies.sync)
     render.commit(lineMesh, extraL);
     extraD = 0;
     extraL = 0;
+    if (ringMesh !== null && anneauxMines !== 0) render.commit(ringMesh, 0); // § E5.X8
+    anneauxMines = 0;
     return;
   }
+  let nr = 0; // § E5.X8 (E18) : anneaux de mines armées
+  const rm = ringMesh !== null ? ringMesh.instanceMatrix.array : null;
+  const rcol = ringMesh !== null ? ringMesh.instanceColor.array : null;
   const H = HAZARDS;
   const y = H.y;
   const dm = discMesh.instanceMatrix.array;
@@ -512,7 +537,20 @@ export function sync() {
       continue;
     }
     // disques : STRIKE = fond + remplissage ; PUDDLE = fond + cœur ; MARK = un disque
-    const layers = kind === HAZ.MARK ? 1 : 2;
+    //#region e5:X8-lot8
+    // § E5.X8 (E17) : obus de l'élite Instable → maillage « une couche » des kamikazes (§ E5.N) : six disques qui se
+    // chevauchent ne peignent jamais un pixel deux fois ; § E5.X8 (E18) : mine armée → plus de fond terne (anneau plus bas)
+    const instable = kind === HAZ.STRIKE && hCause[k] === CAUSE.OBUS_ELITE;
+    if (instable) {
+      ARGF[F_X] = hX[k];
+      ARGF[F_Z] = hZ[k];
+      ARGF[F_DX] = hR[k] * shrink;
+      ARGF[F_T] = u;
+      disqueKamikazeF();
+      instableDisques++;
+    }
+    const layers = instable ? 0 : kind === HAZ.MARK ? 1 : 2;
+    //#endregion e5:X8-lot8
     for (let layer = 0; layer < layers; layer++) {
       let r = hR[k] * shrink;
       let g;
@@ -568,7 +606,32 @@ export function sync() {
     //#region e5:M-dangers-guide
     // § E5.M (B6) : mine armée → son vrai rayon d'explosion (fond terne) ; déclenchée → fond qui clignote + remplissage
     // qui atteint le bord à l'explosion (même dessin qu'un obus)
-    if (kind === HAZ.MINE && hT[k] >= MINE.arm) {
+    if (kind === HAZ.MINE && hT[k] >= MINE.arm && hFuse[k] === 0 && rm !== null && nr < CAPS.robotMines) {
+      // § E5.X8 (E18) : armée, pas déclenchée → contour seul de son rayon d'explosion (à la place du fond terne)
+      const r = MINE.blast * shrink;
+      const o = nr * 16;
+      rm[o] = r;
+      rm[o + 1] = 0;
+      rm[o + 2] = 0;
+      rm[o + 3] = 0;
+      rm[o + 4] = 0;
+      rm[o + 5] = 1;
+      rm[o + 6] = 0;
+      rm[o + 7] = 0;
+      rm[o + 8] = 0;
+      rm[o + 9] = 0;
+      rm[o + 10] = r;
+      rm[o + 11] = 0;
+      rm[o + 12] = hX[k];
+      rm[o + 13] = y;
+      rm[o + 14] = hZ[k];
+      rm[o + 15] = 1;
+      const q = nr * 3;
+      rcol[q] = MINE_X8_GAIN;
+      rcol[q + 1] = MINE_X8_GAIN;
+      rcol[q + 2] = MINE_X8_GAIN;
+      nr++;
+    } else if (kind === HAZ.MINE && hT[k] >= MINE.arm) {
       const fuse = hFuse[k] > 0;
       const u = fuse ? 1 - hFuse[k] / MINE_ANNONCE : 0;
       const pulse = CF.reduits ? u : 0.5 - 0.5 * Math.cos(u * u * H.blinks * TWO_PI); // § E5.X5
@@ -644,6 +707,25 @@ export function sync() {
   TC.N[0] = vn;
   render.commit(discMesh, nd);
   render.commit(lineMesh, nl);
+  if (ringMesh !== null && (nr !== 0 || anneauxMines !== 0)) render.commit(ringMesh, nr); // § E5.X8 (E18)
+  anneauxMines = nr;
+  reduitsKamikazesX8();
+  syncKamikazes(); // § E5.N (point 6) ; § E5.X8 : APRÈS la boucle, qui y ajoute les obus de l'Instable
+}
+/** § E5.X8 : en Flashs Réduits (§ E5.X5), le fond des disques « une couche » ne clignote plus (pulsation nulle) — les obus
+ *  de l'Instable y passent ; écrit seulement quand le réglage change. */
+function reduitsKamikazesX8() {
+  if (kamiMesh === null) return;
+  const uf = kamiMesh.material.uniforms.uFond.value;
+  const veut = CF.reduits ? 0 : HAZARDS.blinks * TWO_PI;
+  if (uf.z !== veut) uf.z = veut;
+}
+const MINE_X8_GAIN = LOT8.mine.gain; // § E5.X8 (E18)
+/** § E5.X8 (tests) : anneaux de mines armées de la dernière image, obus de l'Instable dessinés en une couche (cumul). */
+export function inspectX8(out) {
+  out.anneauxMines = anneauxMines;
+  out.instableDisques = instableDisques;
+  return out;
 }
 
 //#region e5:M-dangers-guide

@@ -16,6 +16,40 @@ import { BARRE, CHESTS, ELITES, ELITE_MOD, ELITE_MOD_COUNT, ELITE_MOD_ICONS, ENE
 import { ARGF, E, F_DX, F_DZ, F_SX, F_SZ, F_T, F_V, F_X, F_Z } from './state.js';
 import { CAUSE } from './config.js'; // § E5.Q (C2) : les obus de l'Instable ne sont pas ceux du tireur v3
 import { CONFORT_FLASHS as CF } from './config.js'; // § E5.X5 (audit C12) : réglage « Flashs »
+//#region e5:X8-lot8
+import { LOT8 } from './config.js'; // § E5.X8 (E11) : retour d'un coup ignoré pendant la phase
+import { P } from './state.js';
+let fx = null;
+let audio = null;
+// X8P : [0] écart minimal entre deux retours (s), [1] instant du dernier retour, [2] gain du son, [3] sa vitesse
+const X8P = new Float64Array([LOT8.phase.ecart, -1e9, LOT8.phase.son.gain, LOT8.phase.son.vitesse]);
+const X8P_SON = LOT8.phase.son.id | 0;
+let ignoresVus = 0; // coups ignorés qui ont donné un retour (gerbe + son)
+/** § E5.X8 (E11) : le robot i est-il un Phasé EN PHASE ? 1 / 0. Repéré par E.uid (les indices bougent à la compaction,
+ *  et enemies.update passe avant update : sIdx peut dater de l'image d'avant). Entier rendu. */
+export function phaseF(i) {
+  if (E.mod[i] !== ELITE_MOD.PHASE) return 0;
+  const u = E.uid[i];
+  for (let s = 0; s < SLOTS; s++) if (sIdx[s] >= 0 && sUid[s] === u && sMod[s] === ELITE_MOD.PHASE) return isPhased(s) ? 1 : 0;
+  return 0;
+}
+/** § E5.X8 (E11) : coup ignoré par le Phasé i — petite gerbe grise vers le héros et un son, au plus un par X8P[0] s. */
+function ignoreF(i) {
+  if (fx === null || CLOCK[0] - X8P[1] < X8P[0]) return;
+  X8P[1] = CLOCK[0];
+  ignoresVus++;
+  ARGF[F_X] = E.x[i];
+  ARGF[F_Z] = E.z[i];
+  ARGF[F_DX] = P.x - E.x[i];
+  ARGF[F_DZ] = P.z - E.z[i];
+  fx.spawnShieldDampF();
+  ARGF[F_X] = E.x[i];
+  ARGF[F_Z] = E.z[i];
+  ARGF[F_V] = X8P[2];
+  ARGF[F_T] = X8P[3];
+  audio.playGainRateF(X8P_SON);
+}
+//#endregion e5:X8-lot8
 
 let render = null;
 let enemies = null;
@@ -73,6 +107,8 @@ export function init(ctx) {
   enemies = ctx.enemies;
   hazards = ctx.hazards;
   camera = ctx.camera;
+  fx = ctx.fx || null; // § E5.X8
+  audio = ctx.audio || null;
   // Atlas : 8 cases de 14 × 14 pixels de grille (12 + le liseré) ; case 7 = cercle de la bulle.
   const px = IC.px;
   const cell = 14 * px;
@@ -127,6 +163,8 @@ export function reset() {
   highRolled.fill(0);
   REGEN_HP[0] = 0;
   rolled = trails = shielded = phased = broods = broodRefused = shells = 0;
+  ignoresVus = 0; // § E5.X8
+  X8P[1] = -1e9;
   shown = 0;
 }
 
@@ -230,6 +268,7 @@ export function damageMulF(i) {
     if (m === ELITE_MOD.PHASE) {
       if (j === i && isPhased(s)) {
         phased++;
+        ignoreF(i); // § E5.X8 (E11)
         return 0;
       }
     } else if (m === ELITE_MOD.BOUCLIER && E.alive[j] === 1) {
@@ -441,6 +480,7 @@ export function inspect(out) {
   out.regenHp = REGEN_HP[0];
   out.shielded = shielded;
   out.phased = phased;
+  out.ignoresVus = ignoresVus; // § E5.X8
   out.broods = broods;
   out.broodRefused = broodRefused;
   out.shells = shells;

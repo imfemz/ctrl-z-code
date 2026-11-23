@@ -41,6 +41,38 @@ import { ANIM } from './reglages.js';
 import { GEN_SCALE } from '../enemies-e3.js'; // § E3.D : taille des mini-rôdeurs du diviseur
 import { REPARATEUR_VOL } from '../config.js'; // § E5.D : flottement du réparateur volant
 import { chargerPieces } from './pieces.js';
+//#region e5:X8-lot8
+// § E5.X8 : attribut d'instance aX8 (vec2) des robots — x = extinction des yeux et émissifs (récupération, E8), y = phase
+// de l'élite Phasé (E11 : corps tramé à LOT8.phase.opacite + contour). Écrit par sync() à côté de aGait.
+import { ELITE_MOD, LOT8 } from '../config.js';
+import { phaseF } from '../elites.js';
+const L8 = LOT8.recup;
+// RX : [0] 1 / rallumage, [1] écrasement de la récupération, [2] part du survol perdue par le drone
+const RX = new Float64Array([1 / L8.rallumage, L8.ecrasement, L8.droneBaisse]);
+const x8Arrs = [];
+const x8Attrs = [];
+const PH = LOT8.phase;
+const fx8 = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(+x.toFixed(5)));
+const X8_VERT_PARS = '\nattribute vec2 aX8; varying vec2 vSrX8;';
+const X8_VERT_MAIN = '\n  vSrX8 = aX8;';
+const X8_FRAG_PARS = '\nvarying vec2 vSrX8;';
+// émissif (yeux, fentes) × (1 − x × (1 − part gardée)) ; Phasé : trame ordonnée 4 × 4 (part gardée = opacité), sauf au
+// bord de la silhouette (Fresnel ≥ seuil) peint en contour clair
+const X8_FRAG_EMIS = `totalEmissiveRadiance += srBase * ( 1.0 - vSrX8.x * ${fx8(1 - L8.yeux)} ) * vEmissive`;
+const X8_FRAG_PHASE = `
+  if ( vSrX8.y > 0.5 ) {
+    vec3 srVx8 = isOrthographic ? vec3( 0.0, 0.0, 1.0 ) : normalize( vViewPosition );
+    float srBord = 1.0 - saturate( dot( normal, srVx8 ) );
+    if ( srBord >= ${fx8(PH.contourSeuil)} ) outgoingLight = vec3( ${fx8(PH.contour[0])}, ${fx8(PH.contour[1])}, ${fx8(PH.contour[2])} ) * ${fx8(PH.contourGain)};
+    else {
+      ivec2 srQ = ivec2( mod( gl_FragCoord.xy, 4.0 ) );
+      int srIdx = srQ.x + srQ.y * 4;
+      float srB = float( srIdx == 0 ? 0 : srIdx == 1 ? 8 : srIdx == 2 ? 2 : srIdx == 3 ? 10 : srIdx == 4 ? 12 : srIdx == 5 ? 4 : srIdx == 6 ? 14 : srIdx == 7 ? 6 : srIdx == 8 ? 3 : srIdx == 9 ? 11 : srIdx == 10 ? 1 : srIdx == 11 ? 9 : srIdx == 12 ? 15 : srIdx == 13 ? 7 : srIdx == 14 ? 13 : 5 );
+      if ( ( srB + 0.5 ) / 16.0 > ${fx8(PH.opacite)} ) discard;
+    }
+  }
+`;
+//#endregion e5:X8-lot8
 
 const R = ANIM.robots;
 const TWO_PI = Math.PI * 2;
@@ -245,9 +277,18 @@ export function materiauMembres(base, type, donnees, geometrieRendue = null, cle
         .replace(BASE, 'vec3 srBase = diffuseColor.rgb * mix( vec3( 1.0 ), uSrEye.rgb, uSrEye.a * step( 0.5, vEmissive ) );');
     } else console.warn('allure : insertion de la teinte des yeux introuvable (' + type + ')');
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float piece; attribute vec4 aGait;' + revFragPars)
+      .replace('#include <common>', '#include <common>\nattribute float piece; attribute vec4 aGait;' + revFragPars + X8_VERT_PARS) // § E5.X8
+      .replace('#include <begin_vertex>', '#include <begin_vertex>' + X8_VERT_MAIN) // § E5.X8
       .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>' + corps)
       .replace('#include <begin_vertex>', '#include <begin_vertex>' + position);
+    //#region e5:X8-lot8
+    // § E5.X8 : yeux éteints (émissif) et Phasé (trame + contour), lus dans aX8
+    if (!shader.fragmentShader.includes('totalEmissiveRadiance += srBase * vEmissive')) console.warn('allure : émissif introuvable (' + type + ', § E5.X8)');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>' + X8_FRAG_PARS)
+      .replace('totalEmissiveRadiance += srBase * vEmissive', X8_FRAG_EMIS)
+      .replace('#include <opaque_fragment>', X8_FRAG_PHASE + '#include <opaque_fragment>');
+    //#endregion e5:X8-lot8
     if (PROGRAMME.actif) {
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>' + revFragPars)
@@ -255,7 +296,7 @@ export function materiauMembres(base, type, donnees, geometrieRendue = null, cle
         .replace('#include <opaque_fragment>', revEmis + '\n#include <opaque_fragment>');
     }
   };
-  m.customProgramCacheKey = () => (typeof baseKey === 'function' ? baseKey.call(base) : '') + '|sr-membres-v2-' + cle + (PROGRAMME.actif ? '-programme' : '');
+  m.customProgramCacheKey = () => (typeof baseKey === 'function' ? baseKey.call(base) : '') + '|sr-membres-v2-x8-' + cle + (PROGRAMME.actif ? '-programme' : '');
   return m;
 }
 
@@ -283,6 +324,13 @@ export function brancherModele(s, mesh, donnees) {
   eyes[s] = mesh.material.userData.uniforms.uSrEye.value;
   gaitArr[s] = ga.array;
   gaitAttr[s] = ga;
+  //#region e5:X8-lot8
+  const a8 = new THREE.InstancedBufferAttribute(new Float32Array((s < ENEMY_COUNT ? E.cap : mesh.instanceMatrix.count) * 2), 2);
+  a8.setUsage(THREE.DynamicDrawUsage);
+  mesh.geometry.setAttribute('aX8', a8);
+  x8Arrs[s] = a8.array;
+  x8Attrs[s] = a8;
+  //#endregion e5:X8-lot8
   if (s >= ENEMY_COUNT) ELITE_MODELE[t] = 1;
 }
 
@@ -339,6 +387,8 @@ export function sync() {
   const TIMER = E.timer, AI0 = E.ai0, AI1 = E.ai1, G = E.ai2, PH = E.ai3, KX = E.kx, KZ = E.kz;
   const TYPE = E.type, ALIVE = E.alive, STATE = E.state, UID = E.uid, SUS = E.sus, FIS = E.fis;
   const FENTE = E.fente; // § E5.AC
+  const RECUP = E.recup; // § E5.X8
+  const MOD = E.mod;
   const fadeInv = 1 / C.spawnFadeSeconds;
   const idle = R.idleAmp;
   const win = R.stepWindow;
@@ -409,6 +459,15 @@ export function sync() {
       }
     }
     else if (t >= ENEMY.FOREUSE) y += AI1[i]; // § E3.D : foreuse enfouie (< 0), scanner en chute (> 0)
+    //#region e5:X8-lot8
+    // § E5.X8 (E8) : récupération — posture basse (écrasement, le drone descend) ; yeux éteints (aX8.x, plus bas)
+    const rc = RECUP[i];
+    const eteint = rc > 0 ? Math.min(rc * RX[0], 1) : 0 * rc;
+    if (rc > 0) {
+      q += RX[1] * eteint;
+      if (t === ENEMY.DRONE) y -= hover[t] * RX[2] * eteint;
+    }
+    //#endregion e5:X8-lot8
     //#region e5:AC-contact
     // § E5.AC : fente du coup de mêlée — avance dans le sens du cap (il fait face au joueur) et penché vers l'avant
     const fe = FENTE[i];
@@ -452,6 +511,13 @@ export function sync() {
     m[o + 15] = 1;
     const gg = gaitArr[sl];
     if (gg === null) continue; // modèle pas encore posé
+    //#region e5:X8-lot8
+    const g8 = x8Arrs[sl];
+    if (g8 !== undefined) {
+      g8[kk * 2] = eteint;
+      g8[kk * 2 + 1] = MOD[i] === ELITE_MOD.PHASE ? phaseF(i) : 0;
+    }
+    //#endregion e5:X8-lot8
     gg[kk * 4] = w;
     gg[kk * 4 + 1] = g;
     gg[kk * 4 + 2] = age;
@@ -463,6 +529,7 @@ export function sync() {
     if (s % ENEMY_COUNT === BOSS_T || actifType[s] === 0 || cursor[s] === 0 || gaitAttr[s] === null) continue;
     // tampon entier, comme render.commit pour instanceMatrix et aFx (addUpdateRange crée un objet par appel)
     gaitAttr[s].needsUpdate = true;
+    if (x8Attrs[s] !== undefined) x8Attrs[s].needsUpdate = true; // § E5.X8
   }
 }
 
@@ -521,3 +588,10 @@ export function protoInspect(out) {
 export function gaitDe(t) {
   return gaitArr[t];
 }
+
+//#region e5:X8-lot8
+/** § E5.X8 (tests) : tableau aX8 de l'emplacement s (2 flottants par instance dessinée, dans l'ordre de sync) — null sans modèle. */
+export function x8De(s) {
+  return x8Arrs[s] || null;
+}
+//#endregion e5:X8-lot8

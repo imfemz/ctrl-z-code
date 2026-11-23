@@ -82,6 +82,7 @@ export const E = {
   barA: F(),
   fente: F(), // § E5.AC : s écoulées depuis le début du coup de mêlée (0 = aucun) ; lu par allure (fente dessinée)
   fis: F(), // § E4.P : bouclier du blindé fissuré (1) ou intact (0) ; collant ; lu par damage et par allure (aGait.w)
+  recup: F(), // § E5.X8 (E8) : s de récupération restantes après une manœuvre (immobile, sans contact, yeux éteints)
   type: B(),
   alive: B(),
   state: B(),

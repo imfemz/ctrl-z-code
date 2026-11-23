@@ -84,6 +84,37 @@ export function reglerAnnonce(part = COMBAT_GUIDE.annonce.part, court = COMBAT_G
 reglerAnnonce();
 const RODEUR_FIGE = COMBAT_GUIDE.rodeur.figer; // § E5.N (point 8) : cap pris au début de l'accroupi
 //#endregion
+//#region e5:X8-lot8
+import { ELITE_MOD, LOT8 } from './config.js'; // § E5.X8 : récupération (E8), Phasé sans contact (E11), visée (G5), souffles (E10)
+// X8 : [0] s de récupération, [1] demi-largeur du trait du tireur, [2] sa longueur, [3] son gain ; sons en entiers / flottants
+const X8 = new Float64Array([LOT8.recup.secondes, LOT8.tireur.largeur * 0.5, LOT8.tireur.longueur, LOT8.tireur.gain]);
+const X8_SON = new Float64Array([LOT8.sons.bond.gain, LOT8.sons.bond.vitesse, LOT8.sons.pique.gain, LOT8.sons.pique.vitesse]);
+const X8_SON_BOND = LOT8.sons.bond.id | 0;
+const X8_SON_PIQUE = LOT8.sons.pique.id | 0;
+const PHASE_MOD = ELITE_MOD.PHASE;
+let elites = null; // ctx.elites (élite Phasé : plus de frappe au contact pendant sa phase)
+/** § E5.X8 (tests) : [0] récupérations commencées, [1] contacts refusés pendant une récupération, [2] contacts refusés
+ *  pendant la phase d'un Phasé, [3] traits de visée du tireur posés, [4] souffles de bond, [5] souffles de piqué */
+export const X8_COMPTES = new Uint32Array(6);
+/** § E5.X8 (E10) : souffle d'une manœuvre (son existant, gain et vitesse propres), au point (ARGF F_X, F_Z déjà posés). */
+function souffleF(id, k) {
+  ARGF[F_V] = X8_SON[k];
+  ARGF[F_T] = X8_SON[k + 1];
+  audio.playGainRateF(id);
+}
+/** § E5.X8 : le robot i peut-il frapper au contact ? 0 = non (récupération, ou Phasé en phase). Compte le refus. */
+function contactPermisF(i) {
+  if (E.recup[i] > 0) {
+    X8_COMPTES[1]++;
+    return 0;
+  }
+  if (E.mod[i] === PHASE_MOD && elites !== null && elites.phaseF(i) === 1) {
+    X8_COMPTES[2]++;
+    return 0;
+  }
+  return 1;
+}
+//#endregion e5:X8-lot8
 
 const LOT_ENNEMIS = VFXP.LOT.ENNEMIS;
 const VFX_STRIDE = VFXP.STRIDE;
@@ -257,7 +288,7 @@ function coupArmeF(i, t, peutToucher) {
   if (FENTE[i] !== prep) return 0;
   const d2 = CS[0];
   const rp = CS[1] + CT[2];
-  const ok = contactOn[t] === 1 && d2 < rp * rp && E.slow[i] !== 0 && E.sus[i] === 0 && E.dmg[i] > 0;
+  const ok = contactOn[t] === 1 && d2 < rp * rp && E.slow[i] !== 0 && E.sus[i] === 0 && E.dmg[i] > 0 && E.recup[i] === 0 && (E.mod[i] !== PHASE_MOD || elites === null || elites.phaseF(i) === 0); // § E5.X8
   if (ok && peutToucher === 1) {
     FENTE[i] = prep + 1e-4; // juste après le sommet : l'image du coup montre la fente au sommet, le retour part ensuite
     if (damage.hitPlayer(E.dmg[i], HURT.CONTACT, E.x[i], E.z[i], causeContact[t]) <= 0) {
@@ -417,6 +448,7 @@ export function init(context) {
   fx = ctx.fx;
   hazards = ctx.hazards;
   view = ctx.camera.view;
+  elites = ctx.elites || null; // § E5.X8
   reglerContact(); // § E5.AC
   RP[0] = REPLI.margin;
   RP[1] = REPLI.seconds;
@@ -894,6 +926,7 @@ export function update(dt) {
   const AI0 = E.ai0, AI1 = E.ai1, MUL = E.mul, REV0 = E.rev0, REV1 = E.rev1, SHIELD = E.shield;
   const TYPE = E.type, ALIVE = E.alive, STATE = E.state, UID = E.uid, DMGV = E.dmg, FLAGS = E.flags;
   const SUS = E.sus; // § E3.K : robot en veille entre deux vagues (comme figé, robot par robot)
+  const RECUP = E.recup; // § E5.X8 (E8)
   const cellStart = grid.cellStart, cellCount = grid.cellCount, items = grid.items;
   const px = P.x, pz = P.z;
   const fouleR2 = FOULE_R2[0]; // § E5.P (B1)
@@ -974,6 +1007,11 @@ export function update(dt) {
     if (TIMER[i] > 0) {
       const a = TIMER[i] - dt;
       TIMER[i] = a > 0 ? a : 0;
+    }
+    if (RECUP[i] > 0) {
+      // § E5.X8 (E8) : récupération après une manœuvre
+      const a = RECUP[i] - dt;
+      RECUP[i] = a > 0 ? a : 0;
     }
     if (REV1[i] > 0) {
       // bulle-bouclier (réparateur v2) : elle s'éteint au bout de sa durée, ce qu'il en reste est perdu
@@ -1123,12 +1161,18 @@ export function update(dt) {
               TIMER[i] = BOND.leapSeconds;
               if (!RODEUR_FIGE && d2 > 1e-6) REV0[i] = Math.atan2(tx, tz);
               leaps++;
+              ARGF[F_X] = xi; // § E5.X8 (E10) : souffle du bond
+              ARGF[F_Z] = zi;
+              souffleF(X8_SON_BOND, 0);
+              X8_COMPTES[4]++;
             } else if (!RODEUR_FIGE && d2 > 1e-6) REV0[i] = Math.atan2(tx, tz);
             chase = false;
           } else if (st === M_GO) {
             if (TIMER[i] <= 0) {
               STATE[i] = M_NONE;
               CD[i] = BOND.cooldown;
+              RECUP[i] = X8[0]; // § E5.X8 (E8) : récupération après le bond
+              X8_COMPTES[0]++;
             } else {
               const a = REV0[i];
               ux = Math.sin(a);
@@ -1159,6 +1203,10 @@ export function update(dt) {
                 STATE[i] = M_GO;
                 TIMER[i] = PIQUE_GO;
                 dives++;
+                ARGF[F_X] = xi; // § E5.X8 (E10) : souffle du piqué
+                ARGF[F_Z] = zi;
+                souffleF(X8_SON_PIQUE, 2);
+                X8_COMPTES[5]++;
               }
               AI0[i] = 0;
               chase = false;
@@ -1168,6 +1216,8 @@ export function update(dt) {
               if (TIMER[i] <= 0) {
                 STATE[i] = M_NONE;
                 CD[i] = PIQUE.every;
+                RECUP[i] = X8[0]; // § E5.X8 (E8) : récupération après le piqué
+                X8_COMPTES[0]++;
               } else {
                 const a = REV0[i];
                 ux = Math.sin(a);
@@ -1376,6 +1426,8 @@ export function update(dt) {
               if (TIMER[i] <= 0) {
                 STATE[i] = M_NONE;
                 CD[i] = CHARGE.every;
+                RECUP[i] = X8[0]; // § E5.X8 (E8) : récupération après la charge
+                X8_COMPTES[0]++;
               } else {
                 const v = CHARGE_V * SLOW[i];
                 wx = hx * v;
@@ -1478,6 +1530,14 @@ export function update(dt) {
           wz = tz * k;
         }
       }
+      //#region e5:X8-lot8
+      // § E5.X8 (E8) : récupération — aucune vitesse voulue (le comportement du type a tourné : la foreuse remonte)
+      if (RECUP[i] > 0) {
+        wx = 0;
+        wz = 0;
+        rush = false;
+      }
+      //#endregion e5:X8-lot8
     }
 
     // 3. séparation : voisins lus dans les tableaux bruts de la grille (3 × 3 cellules)
@@ -1626,7 +1686,8 @@ export function update(dt) {
       // § E5.AC : seuls les robots de mêlée blessent au contact. Pendant une manœuvre (piqué, charge, bond : annoncés par
       // leur trait) le coup part tout de suite, comme avant ; sinon (préparation > 0) le contact ARME un coup (plus bas).
       const go = STATE[i] === M_GO && maneuver[t] === 1;
-      if (contactOn[t] === 1 && (go || prep <= 0) && canHit && ATK[i] <= 0 && DMGV[i] > 0 && SLOW[i] !== 0 && SUS[i] === 0) {
+      const permis = contactOn[t] === 1 ? contactPermisF(i) : 0; // § E5.X8 : récupération, Phasé en phase
+      if (permis === 1 && (go || prep <= 0) && canHit && ATK[i] <= 0 && DMGV[i] > 0 && SLOW[i] !== 0 && SUS[i] === 0) {
         // (§ E3.C : un robot étourdi ne frappe pas au contact ; § E3.K : un robot en veille non plus) piqué du drone v2,
         // charge du blindé v2 : le contact pendant la manœuvre frappe plus fort (§ E1.B)
         const hit = go ? DMGV[i] * goDmgMul[t] : DMGV[i];
@@ -1636,7 +1697,7 @@ export function update(dt) {
           canStart = false;
           if (go) COUPS_MELEE[6]++;
         }
-      } else if (contactOn[t] === 1 && !go && canStart && FENTE[i] === 0 && ATK[i] <= prep && DMGV[i] > 0 && SLOW[i] !== 0 && SUS[i] === 0) {
+      } else if (permis === 1 && !go && canStart && FENTE[i] === 0 && ATK[i] <= prep && DMGV[i] > 0 && SLOW[i] !== 0 && SUS[i] === 0) {
         FENTE[i] = dt < prep ? dt : prep; // le geste part : cette image est sa première (sommet 0,12 s plus loin)
         COUPS_MELEE[0]++;
       }
@@ -1671,6 +1732,8 @@ export function update(dt) {
         ROT[i] = heading === F_TRANSIT ? REV0[i] : REV0[i] + Math.PI;
       } else if (STATE[i] !== M_NONE && maneuver[t] === 1) {
         ROT[i] = REV0[i]; // manœuvre d'une révision : cap figé (là où il va piquer, bondir, charger)
+      } else if (E.recup[i] > 0) {
+        // § E5.X8 (E8) : récupération — cap figé
       } else if (dx * dx + dz * dz > 1e-6) {
         let want = Math.atan2(dx, dz);
         if (t === DRONE_T) want -= AI0[i] * WEAVE.yaw;
@@ -2414,6 +2477,22 @@ export function sync() {
         if (!warn) ARGF[F_T] = 1;
         hazards.traitF();
       }
+      //#region e5:X8-lot8
+      // § E5.X8 (G5) : tireur qui vise → trait fin dans l'axe de son canon, depuis la bouche, pendant la visée (un trait
+      // des décalques « traits-robots » : aucun appel de dessin de plus)
+      if (t === TIREUR_T && E.state[i] === S_AIM && E.timer[i] > 0) {
+        const a = E.rot[i];
+        ARGF[F_X] = X[i] + Math.sin(a) * RANGED.muzzle;
+        ARGF[F_Z] = Z[i] + Math.cos(a) * RANGED.muzzle;
+        ARGF[F_DX] = X8[1];
+        ARGF[F_DZ] = X8[2];
+        ARGF[F_SX] = a;
+        ARGF[F_T] = -1;
+        ARGF[F_V] = X8[3];
+        hazards.traitF();
+        X8_COMPTES[3]++;
+      }
+      //#endregion e5:X8-lot8
       if (t === KAMIKAZE_T && E.state[i] === K_FUSE) {
         ARGF[F_X] = X[i];
         ARGF[F_Z] = Z[i];

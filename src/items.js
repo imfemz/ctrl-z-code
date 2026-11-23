@@ -26,6 +26,9 @@ import { vuObjet } from './defis.js'; // § E4.A : Collection (objets obtenus)
 import { PAREFEU_DOME, PAREFEU_RESERVE } from './config.js'; // § E5.B : dôme du Pare-feu (src/vfx/dome-parefeu.js) — remplace les ondes visuelles
 import { ECLATS } from './config.js'; // § E5.Y : fragments des Éclats en vol
 import { SYNERGIE_OBJET, ligneEvoObjet } from './config.js'; // § E5.X7 (H2, H12) : synergie et évolution sur la carte
+//#region e5:X9-katana-puissance
+import { BONUS, PROGRESSION } from './config.js'; // § E5.X9 (H1) : Puissance s'applique aussi aux objets
+//#endregion e5:X9-katana-puissance
 
 let ctx = null;
 let damage = null;
@@ -517,6 +520,10 @@ export function reset() {
   resetFusions(); // § E3.F
   resetEclats(); // § E5.Y
   refresh();
+  //#region e5:X9-katana-puissance
+  PUI[1] = 0;
+  majPuissance(); // § E5.X9 : après progression.reset (piles à zéro)
+  //#endregion e5:X9-katana-puissance
 }
 
 /**
@@ -559,6 +566,7 @@ const I_BERSERK_MAX = ITEMS[ITEM.BERSERK].max;
 
 /** Un bonus vient d'être pris (progression.applyChoice) : la borne de PV max de l'Overclock suit. */
 export function onModsChanged() {
+  majPuissance(); // § E5.X9 : une carte Puissance a peut-être été prise
   if (stacks[ITEM.OVERCLOCK] > 0) refresh();
 }
 
@@ -997,10 +1005,28 @@ export function onPlayerHitF(amount) {
 }
 const SAVE_BANNER = 'CTRL+Z : SAUVEGARDE RESTAURÉE';
 
+//#region e5:X9-katana-puissance
+// § E5.X9 (H1 ; Femz 21/11 : « Puissance = +10 % armes ET objets ») — PUI[0] : multiplicateur des dégâts de tout coup
+// d'objet (strike), 1 + piles de Puissance × valeur de la carte : empilement ADDITIF, comme mods.damageMul pour les armes
+// (5 cartes : × 1,5). PUI[1] = 1 pendant les déclenchements qui portent une PART d'un coup d'arme (Bobine Tesla, Charge
+// critique et sa seconde explosion) : ce coup porte déjà Puissance, elle n'est pas comptée deux fois. Recalculé hors
+// image (bonus pris, nouvelle partie) : strike ne lit que deux flottants.
+const PUI = new Float64Array(2);
+PUI[0] = 1;
+const B_PUI = PROGRESSION.bonuses[BONUS.DAMAGE];
+function majPuissance() {
+  const pr = ctx !== null && ctx.progression ? ctx.progression : null;
+  PUI[0] = 1 + (pr !== null ? pr.getStacks(BONUS.DAMAGE) : 0) * B_PUI.value;
+}
+//#endregion e5:X9-katana-puissance
+
 // ----- Résolution des déclenchements (update seulement) ----------------------------------------------------------------------
 
 /** Porte ARGF[F_V] dégâts au robot i depuis (ARGF[F_SX], ARGF[F_SZ]) ; rend le résultat de hitEnemyF. */
 function strike(i, flags) {
+  //#region e5:X9-katana-puissance
+  if (PUI[1] === 0) ARGF[F_V] *= PUI[0]; // § E5.X9 (H1) : Puissance, sauf sur une part de coup d'arme (déjà dedans)
+  //#endregion e5:X9-katana-puissance
   const r = damage.hitEnemyF(i, DMG_SRC.ITEM, flags);
   if (r > 0) procHits++;
   return r;
@@ -1646,6 +1672,7 @@ export function update(dt) {
   }
   busy = true;
   stars = 0;
+  PUI[1] = 0; // § E5.X9 : jamais laissé à 1 par une image interrompue
   // minuteries
   if (ST[S_SHIELD] > 0) {
     ST[S_SHIELD] -= dt;
@@ -1724,6 +1751,9 @@ export function update(dt) {
   // file des déclenchements, dans l'ordre d'arrivée
   for (let q = 0; q < qN; q++) {
     const kind = qKind[q];
+    //#region e5:X9-katana-puissance
+    PUI[1] = kind === Q_TESLA || kind === Q_BOOM || kind === Q_BOOM2 ? 1 : 0; // § E5.X9 : part d'un coup d'arme
+    //#endregion e5:X9-katana-puissance
     if (kind === Q_TESLA) tesla(q);
     else if (kind === Q_BOOM) boom(q);
     else if (kind === Q_REACTIVE) reactive(q);
@@ -1747,6 +1777,7 @@ export function update(dt) {
     } else if (kind === Q_BOOM2) boom(q); // § E3.F : seconde explosion de la Réaction en chaîne
     else if (kind === Q_CLOUD) cloudAdd(q); // § E3.F : nuage du Malware
   }
+  PUI[1] = 0; // § E5.X9
   qN = 0;
   updateFusions(dt); // § E3.F : nuages, Surrégime, coffre du Point de restauration
   // statuts

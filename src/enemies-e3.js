@@ -18,6 +18,20 @@ import { CAPS, E3_ROBOTS, ENEMIES, ENEMY, HAZ, HURT, SFX, TRAUMA, VFX, VFX_STYLE
 import { ARGF, E, F_DX, F_DZ, F_SX, F_SZ, F_T, F_V, F_X, F_Z, P, rand } from './state.js';
 import { DANGERS_GUIDE, HAZARDS } from './config.js'; // § E5.M (B10) : arc du scanner dans le langage du balayage du boss
 import { CAUSE } from './config.js'; // § E5.Q (C2) : cause des coups de la foreuse et du scanner
+//#region e5:X8-lot8
+import { LOT8 } from './config.js'; // § E5.X8 : récupération de la foreuse (E8), sons propres (E10)
+// X8E : [0] s de récupération, gains et vitesses : [1], [2] cercle de la foreuse ; [3], [4] atterrissage du scanner
+const X8E = new Float64Array([LOT8.recup.secondes, LOT8.sons.cercleForeuse.gain, LOT8.sons.cercleForeuse.vitesse, LOT8.sons.atterrissageScanner.gain, LOT8.sons.atterrissageScanner.vitesse]);
+const X8E_CERCLE = LOT8.sons.cercleForeuse.id | 0;
+const X8E_ATTERRIT = LOT8.sons.atterrissageScanner.id | 0;
+let recupsForeuse = 0; // § E5.X8 : sorties suivies d'une récupération
+/** § E5.X8 (E10) : son existant au point ARGF F_X, F_Z, gain X8E[k], vitesse X8E[k + 1]. */
+function sonX8F(id, k) {
+  ARGF[F_V] = X8E[k];
+  ARGF[F_T] = X8E[k + 1];
+  audio.playGainRateF(id);
+}
+//#endregion e5:X8-lot8
 
 let enemies = null;
 let damage = null;
@@ -101,6 +115,7 @@ export function reset() {
   children = 0;
   childrenRefused = 0;
   CLOCK[0] = 0;
+  recupsForeuse = 0; // § E5.X8
 }
 
 /** Une fois par image, avant la boucle (enemies.update) : horloge des mesures. */
@@ -207,6 +222,9 @@ function foreuseF(i) {
       ARGF[F_T] = FO.warn;
       ARGF[F_V] = 0; // la foreuse fait les dégâts à sa sortie, pas le cercle
       hazards.addF(HAZ.DRILL);
+      ARGF[F_X] = gx; // § E5.X8 (E10) : bip propre au cercle (était BOSS_TELEGRAPH, le son de la frappe du boss)
+      ARGF[F_Z] = gz;
+      sonX8F(X8E_CERCLE, 1);
       LAST_EMERGE[2] = CLOCK[0];
       ARGF[F_X] = gx;
       ARGF[F_Z] = gz;
@@ -228,6 +246,8 @@ function foreuseF(i) {
       E.radius[i] = T_FO.radius;
       E.dmg[i] = T_FO.contactDmg * E.mul[i];
       emerges++;
+      E.recup[i] = X8E[0]; // § E5.X8 (E8) : récupération dès la sortie (immobile, sans contact, yeux éteints)
+      recupsForeuse++;
       const ex = E.x[i] - gx;
       const ez = E.z[i] - gz;
       LAST_EMERGE[0] = Math.sqrt(ex * ex + ez * ez);
@@ -376,7 +396,7 @@ function scannerF(i) {
       if (P.alive && px * px + pz * pz < rr * rr) damage.hitPlayer(SC.landDmg * E.mul[i], HURT.EXPLOSION, x, z, CAUSE.SCANNER_CHUTE);
       ARGF[F_X] = x;
       ARGF[F_Z] = z;
-      audio.playF(SFX.DRILL);
+      sonX8F(X8E_ATTERRIT, 3); // § E5.X8 (E10) : atterrissage propre au scanner (était SFX.DRILL, le son de la foreuse)
       camera.addTrauma(SC.trauma, TRAUMA.ENEMY_EXPLOSION);
       fx.spawnRing(x, z, SC.landRadius, FO.dustColor);
     }
@@ -575,6 +595,7 @@ export function inspect(out) {
   out.dives = dives;
   out.emerges = emerges;
   out.emergeHits = emergeHits;
+  out.recupsForeuse = recupsForeuse; // § E5.X8
   out.lastEmergeErr = LAST_EMERGE[0];
   out.lastEmergeDelay = LAST_EMERGE[1];
   out.minesLaid = minesLaid;
