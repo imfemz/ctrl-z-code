@@ -1497,13 +1497,31 @@ function sonsFrappe() {
     if (pret === 1 && FS[FS_PRET] === 0) {
       audio.play(SFX_AD.CD_READY);
       SONS_FRAPPE[0]++;
-    } else if (pret === 0 && req > FS[FS_REQ] && acc + effective[FLASH * STAT_COUNT + STAT.RATE] * MEMOIRE_APPUI < 1 && S[S_CLOCK] - FS[FS_REFUS] >= REFUS_ECART) {
-      FS[FS_REFUS] = S[S_CLOCK];
-      audio.playGain(SFX_AD.BUY_DENIED, REFUS_GAIN);
-      SONS_FRAPPE[1]++;
+    } else if (pret === 0 && req > FS[FS_REQ] && acc + effective[FLASH * STAT_COUNT + STAT.RATE] * MEMOIRE_APPUI < 1) {
+      REFUS_X6[0]++; // § E5.X6 (D1) : chaque appui refusé fait trembler la case (ui.js), même quand le son est retenu
+      if (S[S_CLOCK] - FS[FS_REFUS] >= REFUS_ECART) {
+        FS[FS_REFUS] = S[S_CLOCK];
+        audio.playGain(SFX_AD.BUY_DENIED, REFUS_GAIN);
+        SONS_FRAPPE[1]++;
+      }
     }
     FS[FS_PRET] = pret;
-  } else FS[FS_PRET] = 1;
+  } else {
+    FS[FS_PRET] = 1;
+    if (req > FS[FS_REQ] && P.alive) REFUS_X6[2]++; // § E5.X6 (D6) : touche de frappe sans la Frappe éclair (bulle, consignes.js)
+  }
   FS[FS_REQ] = req;
+}
+
+// § E5.X6 (D1) : cran de la jauge horloge de la Frappe éclair sur sa case du HUD (ui.js, paintCd) — 0 pendant les échos,
+// ⌊cadence accumulée × steps⌋ pendant la recharge, steps quand elle est prête. Rend un entier (§ V) ; −1 : pas possédée.
+import { REFUS_X6 } from './state.js';
+export function frappeCran(steps) {
+  if (owned[FLASH] !== 1 || fireAccW === null) return -1;
+  if (flPending > 0) return 0;
+  const acc = fireAccW[FLASH];
+  if (acc >= 1) return steps;
+  const q = (acc * steps) | 0;
+  return q < 0 ? 0 : q >= steps ? steps - 1 : q;
 }
 //#endregion e5:AD-sons-existants

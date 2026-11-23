@@ -4305,6 +4305,9 @@ export function itemText(id, stacks) {
   if (I.unit === 'm') return fr(v, 2) + ' m';
   if (I.unit === 's') return fr(v, 1) + ' s';
   if (I.unit === 'kills') return String(Math.round(v)) + ' robots';
+  // § E5.X7 (H11) : 'tir' = PV d'un tir du drone (blaster de niveau 1 × v, items.js DRONE_DMG) ; 'pvs' = PV perdus par seconde
+  if (I.unit === 'tir') return fr(Math.round(v * WEAPONS[WEAPON.BLASTER].stats[STAT.DAMAGE][0] * 10) / 10, 1).replace(/,0$/, '');
+  if (I.unit === 'pvs') return '−' + Math.round(v) + ' PV/s';
   return String(Math.round(v));
 }
 
@@ -7938,6 +7941,138 @@ export function lignesCarteO(b, agent, damageTakenMul) {
   const s = SYNERGIE_O[agent] ? SYNERGIE_O[agent][b] : '';
   return s ? t + '\n' + s : t;
 }
+
+// ===== § E5.X7 — lot 11 de l'audit : récompenses et HUD qui disent tout (H2-H16, A13, F6 ; Femz 22/11) =================
+// Bloc groupé (le lot 7 touche aussi ce fichier). Tous ces textes sont construits au chargement ou hors combat.
+
+// ----- H10 : la recharge, un chiffre par ligne (cooldowns.salvesTexte ; {a}, {c} : « 1,5 » ou « 1,5 → 1,7 ») -----
+RECHARGE.phrase.une = 'Démarre à {r} m d’un robot\nAgit {a} s\nPuis se recharge {c} s'; // 'Agit {a} s dès qu’un robot est à moins de {r} m, puis se recharge {c} s.'
+RECHARGE.phrase.deux = RECHARGE.phrase.une;
+
+// ----- H11 : valeurs avec leur repère -----
+{
+  const I_ = (k) => ITEMS.find((I) => I.key === k);
+  // Drone : « × 1,00 » (fois quoi ?) → les dégâts d'un tir, en PV (dégâts du blaster de niveau 1 × multiplicateur : items.js DRONE_DMG)
+  I_('drone').unit = 'tir'; // 'mul'
+  I_('drone').what = 'dégâts par tir'; // 'dégâts du drone'
+  // Berserk : « Plafond : × 3 » → le gain maximal, dans l'unité de sa ligne (« Cadence à 0 PV : +20 % ») ; max = I.max (items.js I_BERSERK_MAX)
+  I_('berserk').pile = 'Au plus +' + Math.round(100 * I_('berserk').max) + ' %, tous exemplaires compris'; // 'Plafond : × 3'
+  I_('berserk').what = 'cadence, PV presque vides'; // 'cadence à 0 PV' : deux chiffres sur la ligne (« Cadence à 0 PV : +20 % »)
+  // Virus : « PV par seconde : 2 » sans dire qui les perd → « Robot infecté : −2 PV/s »
+  I_('virus').unit = 'pvs'; // 'n'
+  I_('virus').what = 'robot infecté'; // 'PV par seconde'
+}
+
+// ----- H12 : synergies de critique oubliées, et la synergie inverse sur les cartes d'objet -----
+SYNERGIES.cartes.crit.armes = ['katana', 'smoke']; // « Utile avec » de la carte Viseur, quand l'arme est possédée
+/** Ligne « Utile avec : Viseur » d'une carte d'objet : les bonus de carte dont SYNERGIES.cartes cite l'objet (au chargement). */
+export const SYNERGIE_OBJET = ITEMS.map((I) => {
+  const noms = [];
+  for (const B of PROGRESSION.bonuses) {
+    const S = SYNERGIES.cartes[B.key];
+    if (S && S.objets && S.objets.includes(I.key)) noms.push(B.name);
+  }
+  return noms.length ? SYNERGIES.prefixe + noms.join(', ') : '';
+});
+/** Noms des armes de la synergie de la carte b possédées (owned : Uint8Array de weapons) : « , Katana, Fumigènes » ou ''. */
+export function synergieArmesX7(b, owned) {
+  const S = SYNERGIES.cartes[PROGRESSION.bonuses[b].key];
+  if (!S || !S.armes || !owned) return '';
+  let t = '';
+  for (const k of S.armes) {
+    const w = WEAPON_KEYS.indexOf(k);
+    if (w >= 0 && owned[w] === 1) t += ', ' + WEAPONS[w].name;
+  }
+  return t;
+}
+
+// ----- H2 / C20 : l'évolution sur la carte (connue : découverte ou révélée par un succès — règle de la Collection) -----
+export const EVO_CARTE = {
+  arme: 'Évolue avec : {p} (au niveau max, puis un coffre)', // arme principale, recette connue
+  inconnue: 'Évolution : ? (au niveau max, puis un coffre)', // arme principale, recette pas encore connue
+  objet: 'Fait évoluer : {a} (arme au niveau max, puis un coffre)', // objet catalyseur ou arme absorbée, recette connue
+};
+/** Évolution dont l'arme w est l'arme principale (−1 sinon), dont elle est l'arme absorbée, dont l'objet i est le catalyseur. */
+export const EVO_DE_ARME = WEAPON_KEYS.map((k) => EVOLUTIONS.findIndex((E) => E.weapon === k));
+export const EVO_PARTENAIRE = WEAPON_KEYS.map((k) => EVOLUTIONS.findIndex((E) => E.partner === k));
+export const EVO_DE_OBJET = ITEMS.map((I) => EVOLUTIONS.findIndex((E) => E.item === I.key));
+const nomArmeX7 = (k) => (WEAPON_KEYS.indexOf(k) >= 0 ? WEAPONS[WEAPON_KEYS.indexOf(k)].name : '?');
+const nomCatalyseurX7 = (E) => (E.item ? ITEMS.find((I) => I.key === E.item).name : nomArmeX7(E.partner));
+/** Ligne d'évolution d'une carte d'arme (connue(e) : la recette e est connue). Chaîne vide si l'arme n'évolue pas. */
+export function ligneEvoArme(w, connue) {
+  const e = EVO_DE_ARME[w];
+  if (e >= 0) return connue(e) ? EVO_CARTE.arme.replace('{p}', nomCatalyseurX7(EVOLUTIONS[e])) : EVO_CARTE.inconnue;
+  const p = EVO_PARTENAIRE[w];
+  return p >= 0 && connue(p) ? EVO_CARTE.objet.replace('{a}', nomArmeX7(EVOLUTIONS[p].weapon)) : '';
+}
+/** Ligne d'évolution d'une carte d'objet : seulement si la recette est connue (la découverte reste voulue, C20). */
+export function ligneEvoObjet(i, connue) {
+  const e = i >= 0 && i < EVO_DE_OBJET.length ? EVO_DE_OBJET[i] : -1;
+  return e >= 0 && connue(e) ? EVO_CARTE.objet.replace('{a}', nomArmeX7(EVOLUTIONS[e].weapon)) : '';
+}
+
+// ----- H3 / C5 : lots d'arme du coffre en VALEURS (« Perforation : 0 → 1 robot traversé ») -----
+export const LOT_STAT_X7 = {
+  ligne: '{l} : {a} → {b}', // {l} : nom de la stat ; {a}, {b} : valeur effective avant → après (unité comprise)
+  mots: { Perforation: ['robot traversé', 'robots traversés'] }, // stat sans unité ni repère : l'unité en mots
+};
+/** Valeur d'une stat pour une carte : deux décimales au plus, virgule ; unité « /s » collée, les autres après une espace. */
+export function valeurStatX7(v, unite) {
+  const r = Math.round(v * 100) / 100;
+  let s = Number.isInteger(r) ? String(r) : r.toFixed(2).replace(/0$/, '').replace('.', ',');
+  if (unite) s += (unite.charCodeAt(0) === 47 ? '' : ' ') + unite;
+  return s;
+}
+/** « Dégâts : 10 → 12 » (unité de la stat, mots de LOT_STAT_X7.mots si elle n'en a pas) ; avant < 0 : « Dégâts : 12 ». */
+export function ligneStatX7(w, s, avant, apres) {
+  const W = WEAPONS[w];
+  const m = LOT_STAT_X7.mots[W.statLabels[s]];
+  const u = m ? (Math.round(apres) >= 2 ? m[1] : m[0]) : W.statUnits[s];
+  if (u === '×') return W.statLabels[s] + ' : ' + (avant < 0 ? '' : '× ' + valeurStatX7(avant, '') + ' → ') + '× ' + valeurStatX7(apres, ''); // « × 2,2 → × 2,8 », comme le Viseur thermique
+  if (avant < 0) return W.statLabels[s] + ' : ' + valeurStatX7(apres, u); // nouvelle arme : la valeur à son arrivée
+  return LOT_STAT_X7.ligne.replace('{l}', W.statLabels[s]).replace('{a}', valeurStatX7(avant, '')).replace('{b}', valeurStatX7(apres, u));
+}
+
+// ----- H6 : récompenses dites (récap des ramassages, § E5.E.2 ; marchand) -----
+RECAP.types.push(
+  { cle: 'soinVague', nom: 'Nouvelle vague', icone: 'sr-b-regen', couleur: hexUi(UTIL_UI('battery').color), effet: 'pv' }, // PV réellement rendus (main.basculer)
+  { cle: 'relanceBoss', nom: 'Boss détruit', icone: 'sr-i-trophee', couleur: '#ffc83d', effet: 'texte', texte: '+' + CHOICES.rerollPerBoss + ' relance' }, // main.js : CHOICES.rerollPerBoss
+);
+RECAP_T.SOIN_VAGUE = 13;
+RECAP_T.RELANCE_BOSS = 14;
+RECAP_T.COUNT = RECAP.types.length; // 15
+if (RECAP.types[RECAP_T.SOIN_VAGUE].cle !== 'soinVague' || RECAP.types[RECAP_T.RELANCE_BOSS].cle !== 'relanceBoss') throw new Error('RECAP : types du § E5.X7 hors d’ordre');
+export const DECRYPTAGE_X7 = {
+  soin: 'Soin du marchand : +{n} PV', // shop.open (SHOP.repairOnArrival), PV réellement rendus
+  soinPlein: 'PV déjà au maximum',
+  fragments: 'Les fragments non dépensés sont perdus à la fin de la partie.', // H16
+};
+
+// ----- H9 : nombre de lots d'une élite porteuse sur sa bannière (ELITES.chestSize ; un seul chiffre par ligne) -----
+CARRIER_RARITY.lots = RARITIES.map((R, r) =>
+  r >= RARITY.ROOT ? ' · ' + ELITES.chestSize.root + ' LOTS' : r === RARITY.NOYAU ? ' · ' + ELITES.chestSize.noyau + ' LOTS' : r === RARITY.CHIFFRE ? ' · JUSQU’À 3 LOTS' : ' · 1 LOT',
+);
+
+// ----- H15, H16 : bonus au sol (30 s) et fragments (perdus en fin de partie), consignes montrées une fois par profil -----
+CONSIGNES.bonusSol = { lignes: ['Bonus au sol : ramassez-le vite, il disparaît après ' + UTILITIES.groundSeconds + ' s.'], secondes: 6 };
+CONSIGNES.fragments = { lignes: ['Fragments : à dépenser chez le marchand.', 'Ceux qui restent sont perdus à la fin de la partie.'], secondes: 6 };
+
+// ----- A13 / F6 : HUD — bulles au survol, libellés courts, légende de la fiche (Tab) -----
+export const HUD_X7 = {
+  armes: 'ARMES', // libellé court au-dessus de la rangée des armes
+  objets: 'OBJETS', // au-dessus de la colonne des objets
+  arme: '{n} · niveau {v}', // bulle d'une case d'arme (« Blaster · niveau 7 »), puis sa phrase
+  objet: '{n} ×{v}', // bulle d'une case d'objet (« Bobine Tesla ×3 »), puis « Chance par coup : 14,2 % »
+  fragments: ['Fragments : à dépenser chez le marchand.', 'Perdus à la fin de la partie.'],
+  puce: ['Puce de l’agent :', 'elle brille plus fort avec vos objets.'],
+  legendeTitre: 'Repères du HUD',
+  legende: [
+    'En bas : vos armes. Le chiffre est leur niveau.',
+    'À gauche : vos objets. Le chiffre compte les exemplaires.',
+    '◇ en haut à droite : vos fragments, pour le marchand.',
+    'Survolez une case pour la lire.',
+  ],
+};
 //#endregion e5:O-noms-guide
 
 //#region e5:N-combat-guide
@@ -7983,6 +8118,37 @@ COMBAT_GUIDE.blinde = { anneauSansBouclier: true };
 // Tireurs (Femz, 21/11) : « les canons qui tirent des boules rouges, y'en a trop, et ils s'accumulent » — moitié moins :
 // part maximale dans une vague 0,18 → 0,09, croissance par vague 0,5 → 0,25 (base 1,5 inchangée)
 Object.assign(ENEMIES.types[ENEMY.TIREUR].weight, { perWave: 0.25, maxShare: 0.09 });
+// ----- § E5.X6 (lot 7 de l'audit UX : le jeu dit quand une action est impossible ; Femz 22/11) ---------------------------
+// Aucun son neuf : BUY_DENIED adouci (gain < 1 : sonie effective sous −18,6 LU, donc ≤ −19). Un effet chiffré par ligne.
+export const ACTIONS_IMPOSSIBLES = {
+  // D1 : la case de la Frappe éclair tremble à chaque appui refusé (durée de l'animation CSS sr-x6-tremble-a/b)
+  frappe: { trembleS: 0.15 },
+  // D2 / D3 / D14 : dash
+  dash: {
+    tampon: 0.15, // s — un appui fait jusqu'à 0,15 s avant la fin de la recharge part dès qu'elle finit (D3)
+    refusGain: 0.5, // × le gain de BUY_DENIED (−6 dB : −24,6 LU)
+    refusEcart: 0.4, // s — au plus un clic de refus par 0,4 s (temps simulé)
+    pingS: 0.15, // s — l'anneau R1 vire au rouge
+    pingGonfle: 0.12, // l'anneau grossit de 12 % au plus pendant le ping
+  },
+  // D5 / H7 : bandeau du terminal posé
+  terminal: {
+    approchez: 'approchez-vous', // à la place de la touche, hors de portée
+    appelS: 1.5, // s — « approchez-vous » mis en avant après un appui hors de portée
+    separateur: ' · ', // « Terminal posé · 24 s »
+    unite: ' s',
+  },
+  // F11 : marchand
+  marchand: { manque: 'il manque ' }, // suivi du nombre de fragments manquants
+};
+// D6 : touche de frappe sans la Frappe éclair — une fois par partie (consignes.js), pas par profil
+// (lignes lues à l'apparition de la bulle : le nom de l'arme suit un renommage écrit plus loin dans le fichier)
+CONSIGNES.frappe = {
+  get lignes() {
+    return ['{frappe} : ' + WEAPONS.find((W) => W.id === WEAPON.FLASH).name + ' pas encore obtenue. Elle peut sortir à un niveau ou dans un coffre.'];
+  },
+  secondes: 3.5,
+};
 //#endregion e5:N-combat-guide
 //#region e5:P-lisibilite-guide
 // Étape 5, lot 3 du guide UX : lisibilité en fin de partie chargée (ARCHITECTURE.md § E5.P ; audit

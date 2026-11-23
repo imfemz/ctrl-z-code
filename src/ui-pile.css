@@ -3425,3 +3425,102 @@
   padding: 1.1rem 0 1rem;
   background: linear-gradient(180deg, rgba(8, 13, 19, 0) 0%, rgba(8, 13, 19, 0.94) 40%, #080d13 100%);
 }
+
+/* ----- § E5.X6 (lot 7 de l'audit UX : le jeu dit quand une action est impossible ; Femz 22/11) ----------------------- */
+/* D1 : appui refusé sur la Frappe éclair en recharge — l'icône de sa case tremble 0,15 s (deux noms : relancée à chaque
+   refus). Animation sur un événement seulement (jamais réécrite à chaque image). */
+.sr-hud .sr-ic.sr-x6-tremble-a {
+  animation: sr-x6-tremble-a 0.15s steps(3, jump-none) 1;
+}
+.sr-hud .sr-ic.sr-x6-tremble-b {
+  animation: sr-x6-tremble-b 0.15s steps(3, jump-none) 1;
+}
+@keyframes sr-x6-tremble-a {
+  0% { transform: translateX(-0.14rem); }
+  50% { transform: translateX(0.14rem); }
+  100% { transform: none; }
+}
+@keyframes sr-x6-tremble-b {
+  0% { transform: translateX(0.14rem); }
+  50% { transform: translateX(-0.14rem); }
+  100% { transform: none; }
+}
+/* D5 / H7 : bandeau du terminal posé — « · 24 s » ; hors de portée « approchez-vous » à la place de la touche (mis en
+   avant 1,5 s après un appui hors de portée) */
+[data-sr-theme='carte-mere'] .sr-hud .sr-pal-temps {
+  color: #f3fff4;
+  letter-spacing: 0.08em;
+}
+[data-sr-theme='carte-mere'] .sr-hud .sr-pal-approche {
+  display: none;
+  color: #f3fff4;
+}
+[data-sr-theme='carte-mere'] .sr-hud .sr-pal-loin .sr-pal-touche {
+  display: none;
+}
+[data-sr-theme='carte-mere'] .sr-hud .sr-pal-loin .sr-pal-approche {
+  display: inline-block;
+}
+[data-sr-theme='carte-mere'] .sr-hud .sr-pal-appel .sr-pal-approche {
+  padding: 0.18em 0.3em 0.12em;
+  border: 2px solid #f3fff4;
+  background: #0b1410;
+  box-shadow: 0 2px 0 #000;
+  animation: sr-x6-appel 0.5s steps(2, jump-none) 3;
+}
+@keyframes sr-x6-appel {
+  50% { color: #f2c14e; border-color: #f2c14e; }
+}
+/* F11 : marchand — « il manque N » écrit sur une ligne trop chère (pas seulement la couleur du prix) ; un clic refusé fait
+   trembler le prix en rouge 0,3 s. La colonne du prix (3,6 rem fixes) s'élargit pour « il manque N » : sinon le texte
+   débordait à gauche, sur l'étiquette de solde et le prix (mesuré sur la ligne soldée) ; la colonne de la valeur garde sa
+   largeur (sinon « 2,3 /s » passait sous les crans). */
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat {
+  grid-template-columns: 6.8rem minmax(max-content, 1fr) auto 2.7rem minmax(3.6rem, max-content); /* la valeur garde sa largeur (« 2,3 /s ») */
+}
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-wlignes .sr-stat.sr-overcharge {
+  grid-template-columns: 6.8rem auto minmax(0, 1fr) 2.7rem minmax(3.6rem, max-content);
+}
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price .sr-stat-manque {
+  margin-left: 0.35rem;
+  font: 400 0.75rem/1 var(--sr-mono);
+  color: #b9c7c1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price .sr-stat-manque:empty {
+  display: none;
+}
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price.sr-x6-refus-a {
+  animation: sr-x6-refus-a 0.3s steps(4, jump-none) 1;
+}
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price.sr-x6-refus-b {
+  animation: sr-x6-refus-b 0.3s steps(4, jump-none) 1;
+}
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price.sr-x6-refus-a > *,
+:root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price.sr-x6-refus-b > * {
+  animation: sr-x6-rouge 0.3s linear 1;
+}
+@keyframes sr-x6-refus-a {
+  0% { transform: translateX(-0.2rem); }
+  33% { transform: translateX(0.2rem); }
+  66% { transform: translateX(-0.12rem); }
+  100% { transform: none; }
+}
+@keyframes sr-x6-refus-b {
+  0% { transform: translateX(0.2rem); }
+  33% { transform: translateX(-0.2rem); }
+  66% { transform: translateX(0.12rem); }
+  100% { transform: none; }
+}
+@keyframes sr-x6-rouge {
+  0%, 99% { color: #ff5a5a; fill: #ff5a5a; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sr-hud .sr-ic.sr-x6-tremble-a,
+  .sr-hud .sr-ic.sr-x6-tremble-b,
+  :root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price.sr-x6-refus-a,
+  :root[data-sr-theme='carte-mere'] .sr-shop .sr-wcard .sr-stat .sr-stat-price.sr-x6-refus-b {
+    animation: none;
+  }
+}

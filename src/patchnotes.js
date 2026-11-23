@@ -4,8 +4,27 @@
 // Changer `version` rallume la pastille « NOUVEAU » chez tous les joueurs (PATCHNOTES_UI.cleVue).
 // Sources : git log et ARCHITECTURE.md (plan addictif, étapes 1 à 4).
 export const PATCHNOTES = {
-  version: '0.5.13',
+  version: '0.5.14',
   entrees: [
+    {
+      version: '0.5.14',
+      date: '23/11/2026',
+      titre: 'Tout se lit',
+      lignes: [
+        'Les cartes du coffre disent avec quel objet une arme évolue, ou « ? » tant que la recette n’est pas découverte.',
+        'Les améliorations du coffre montrent leurs vraies valeurs : « Cadence : 2,3 → 2,7/s ».',
+        'Les récompenses s’affichent : PV rendus à chaque vague, relance gagnée sur le boss, soin du marchand.',
+        'HUD : libellés « Armes » et « Objets », et une bulle quand vous survolez une case.',
+        'La fiche (Tab) explique les repères du HUD.',
+        'Deux bulles d’aide : les bonus au sol disparaissent après 30 s, les fragments non dépensés sont perdus en fin de partie.',
+        'Dash en recharge : un petit clic et l’anneau au sol s’allume en rouge ; un appui juste avant la fin part dès que le dash est prêt.',
+        'L’anneau du dash reste visible au milieu de la horde.',
+        'Frappe éclair : sa case montre la recharge et tremble si vous appuyez trop tôt.',
+        'Sans la Frappe éclair, sa touche vous dit comment l’obtenir.',
+        'Terminal : « approchez-vous » quand vous êtes trop loin, et le temps qu’il lui reste avant de repartir.',
+        'Marchand : chaque amélioration trop chère dit combien de fragments il manque.',
+      ],
+    },
     {
       version: '0.5.13',
       date: '22/11/2026',

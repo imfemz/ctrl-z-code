@@ -59,6 +59,10 @@ import { F_X as F_X_E3C, F_Z as F_Z_E3C } from './state.js'; // § E3.C : tirs c
 import { api as __A } from './anim/armes-heros.js';
 // Étape 3, chantier N (§ E3.N) : les six armes des arsenaux du Shinobi et du Bastion (katana … marteau)
 import * as WA from './weapons-agents.js';
+/** § E5.X6 (D1) : cran entier de la jauge de la Frappe éclair pour le HUD (ui.js n'importe pas weapons-agents.js). */
+export function frappeCran(steps) {
+  return WA.frappeCran(steps);
+}
 import { armesCoupees } from './anim/coup-pied.js'; // § E4.O.3 : armes coupées pendant le coup de pied
 import { vuArme } from './defis.js'; // § E4.A : Collection (armes obtenues)
 import * as CB from './anim/combos.js'; // § E3.M : gestes des coups de lame et des poses de tourelle

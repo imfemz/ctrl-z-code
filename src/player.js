@@ -27,6 +27,13 @@ import * as CPV2 from './anim/coup-pied.js';
 //#region e5:U-visee-souris
 import * as visee from './visee.js'; // § E5.U : visée à la souris (direction, regard du buste, trait de la Frappe éclair)
 //#endregion e5:U-visee-souris
+// § E5.X6 (D2, D3) : dash refusé (clic sourd + ping de R1), tampon de l'appui. Horloge et dernier clic en tableau typé.
+import { ACTIONS_IMPOSSIBLES } from './config.js';
+import { REFUS_X6 } from './state.js';
+const X6_TAMPON = ACTIONS_IMPOSSIBLES.dash.tampon;
+const X6_GAIN = ACTIONS_IMPOSSIBLES.dash.refusGain;
+const X6_ECART = ACTIONS_IMPOSSIBLES.dash.refusEcart;
+const X6 = new Float64Array(2); // [0] horloge simulée (s), [1] horloge du dernier clic de refus
 let dashFini = 0; // le trajet du dash s'est achevé pendant ce pas
 let ctx = null;
 let input = null;
@@ -78,7 +85,7 @@ export function init(context) {
   // chargement. Profil peint « herosAnime » : celui du héros, liseré cyan atténué (config.js, région anim:reglages).
   materiau = ajouterRevele(ctx.render.createLitMaterial({ glowColor: PALETTE.playerAccent, profil: 'herosAnime' })); // matérialisation (carte-blender)
   // Repères au sol R1 (recharge du dash) et R2 (santé basse) : posés au sol, test de profondeur (retour de Femz du 13/11)
-  reperes.init(ctx.scene);
+  reperes.init(ctx.scene, ctx.render); // § E5.X6 (D14) : render pour la copie des crans dessinée par-dessus la foule
   lastDashMul[0] = mods.dashCdMul;
   visee.init(ctx); // § E5.U : la plaque du trait est dans la scène avant le prewarm
 }
@@ -252,6 +259,9 @@ export function reset() {
   P.alive = true;
   P.dashT = 0;
   P.dashCd = 0;
+  P.dashReq = 0; // § E5.X6 (D3)
+  X6[0] = 0; // § E5.X6 (D2)
+  X6[1] = -1e9;
   dashFini = 0;
   dashAgents.reset();
   P.dashDirX = P.moveX;
@@ -357,7 +367,13 @@ export function update(dt) {
     P.moveZ = dirZ;
   }
   // 4. dash
-  if (input.pressed(ACTION.DASH) && P.dashCd <= 0 && P.dashT <= 0 && (engage === 0 || COUP_DE_PIED.v2.dashAnnule)) {
+  // § E5.X6 (D3) : l'appui est gardé X6_TAMPON s (P.dashReq) et part dès que la recharge finit ; décompté APRÈS le test
+  // (pas à l'image de l'appui) : un appui fait à ≤ X6_TAMPON s de la fin part toujours, à toute cadence
+  X6[0] += dt;
+  const appuiDash = input.pressed(ACTION.DASH);
+  if (appuiDash) P.dashReq = X6_TAMPON;
+  if (P.dashReq > 0 && P.dashCd <= 0 && P.dashT <= 0 && (engage === 0 || COUP_DE_PIED.v2.dashAnnule)) {
+    P.dashReq = 0; // § E5.X6 (D3) : demande consommée
     if (KC[CPV2.C_ACTIF] === 1 && KC[CPV2.C_V2] === 1) {
       CPV2.annuler(); // § E4.O.2 : le dash annule le coup, dans la direction de la touche tenue
       if ((mx !== 0 || my !== 0) && !moving) {
@@ -405,7 +421,17 @@ export function update(dt) {
     const inv = (P.dashT > 0 ? P.dashT : D.duration) + D.invulnExtra;
     if (P.invulnT < inv) P.invulnT = inv;
     if (run.agent !== AGENT.SHINOBI) audio.play(SFX.PLAYER_DASH); // le pas de l'ombre joue sa fumée
+  } else if (appuiDash && P.dashCd > P.dashReq) {
+    // § E5.X6 (D2) : appui refusé (recharge plus longue que le tampon, ou dash en cours) — R1 pingue en rouge à chaque
+    // refus ; clic sourd (BUY_DENIED adouci) au plus un toutes les X6_ECART s
+    REFUS_X6[1]++;
+    reperes.entree[1] = 1;
+    if (X6[0] - X6[1] >= X6_ECART) {
+      X6[1] = X6[0];
+      audio.playGain(SFX.BUY_DENIED, X6_GAIN);
+    }
   }
+  if (!appuiDash && P.dashReq > 0) P.dashReq = P.dashReq > dt ? P.dashReq - dt : 0; // § E5.X6 (D3)
   // 4 bis. 16/11 (point 3) : frappe éclair à la touche (A en AZERTY / E par défaut) — weapons-agents.fireFlash la consomme
   if (input.pressed(ACTION.STRIKE)) P.strikeReq = STRIKE_KEYS.bufferSeconds;
   else if (P.strikeReq > 0) P.strikeReq = P.strikeReq > dt ? P.strikeReq - dt : 0;

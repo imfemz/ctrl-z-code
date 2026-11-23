@@ -25,6 +25,7 @@ import * as meta from './meta.js'; // § E3.F : recettes découvertes (indice du
 import { vuObjet } from './defis.js'; // § E4.A : Collection (objets obtenus)
 import { PAREFEU_DOME, PAREFEU_RESERVE } from './config.js'; // § E5.B : dôme du Pare-feu (src/vfx/dome-parefeu.js) — remplace les ondes visuelles
 import { ECLATS } from './config.js'; // § E5.Y : fragments des Éclats en vol
+import { SYNERGIE_OBJET, ligneEvoObjet } from './config.js'; // § E5.X7 (H2, H12) : synergie et évolution sur la carte
 
 let ctx = null;
 let damage = null;
@@ -786,6 +787,10 @@ export function describe(id, rarity, out) {
   //#endregion e5:O-noms-guide
   // § E4.G : objet en mode recharge — l'effet, puis « Recharge 6,0 s → 5,7 s · Action 2,0 s → 2,2 s » (piles actuelles → après le lot)
   if (cdMod !== null && cdMod.isCooldown(1, id)) out.desc += '\n' + cdMod.salvesTexte(1, id, stacks[id], stacks[id] + gain); // § E4.N.2 : sans la phrase RECHARGE_TXT
+  // § E5.X7 (H12) : la synergie inverse (« Utile avec : Viseur ») ; (H2) l'arme qu'il fait évoluer, si la recette est connue
+  if (SYNERGIE_OBJET[id]) out.desc += '\n' + SYNERGIE_OBJET[id];
+  const evo = ligneEvoObjet(id, meta.evoConnue);
+  if (evo) out.desc += '\n' + evo;
   return out;
 }
 

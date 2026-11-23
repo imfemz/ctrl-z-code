@@ -8,6 +8,7 @@ import {
   STORAGE, UTIL_COUNT, UTILITIES, WEAPON_COUNT, WEAPON_KEYS, cyclesDetail,
 } from './config.js';
 import { CAUSE_COUNT } from './config.js'; // § E5.Q (Femz, 21/11) : morts par cause, d'une partie à l'autre
+import { EVOLUTIONS } from './config.js'; // § E5.X7 (H2) : recette connue
 
 function statsVierges() {
   return {
@@ -233,6 +234,15 @@ export function evolutionCount() {
 /** Recette révélée par un succès ('evo:<clé>' ou 'fusion:<clé>'). */
 export function isRevealed(key) {
   return data.revealed.indexOf(key) >= 0;
+}
+
+/**
+ * § E5.X7 (H2) : recette d'évolution e CONNUE du joueur — découverte (le coffre l'a donnée) ou révélée par un succès ;
+ * la règle de la Collection (ui-hub.js). Hors combat (cartes, fenêtre d'infos).
+ */
+export function evoConnue(e) {
+  const E = EVOLUTIONS[e];
+  return !!E && (isDiscovered('evolutions', E.id) || isRevealed('evo:' + E.key));
 }
 
 export function hasSucces(s) {

@@ -30,6 +30,7 @@ import { P } from '../state.js';
 import { view } from '../camera.js';
 import { ANIM } from './reglages.js';
 import { extra } from './heros-anim.js';
+import { ACTIONS_IMPOSSIBLES, RENDER } from '../config.js'; // § E5.X6 (D2, D14)
 
 const R = ANIM.reperes;
 const D = R.dash;
@@ -52,28 +53,42 @@ const R2_CHANGE = 7; // s depuis le dernier changement de PV
 const R2_REF = 8; // PV de référence
 const R2_ENV = 9; // enveloppe du battement du corps (0..1, suit R2_ON en fadeIn)
 const R2_HP = 10; // PV au pas précédent
-const S = new Float64Array(11);
+const R1_REFUS = 11; // § E5.X6 (D2) : s depuis le dernier dash refusé (ping rouge)
+const S = new Float64Array(12);
+const X6_PING = ACTIONS_IMPOSSIBLES.dash.pingS;
+const X6_GONFLE = ACTIONS_IMPOSSIBLES.dash.pingGonfle;
 const popT = new Float64Array(NC);
 const waveAge = new Float64Array(2);
 let waveNext = 0;
 const reduit = { mouvement: false };
-/** Entrée de update() : [0] = recharge complète du dash (s), écrite par player.js avant l'appel. */
-export const entree = new Float64Array(1).fill(1);
+/**
+ * Entrée de update() : [0] = recharge complète du dash (s), écrite par player.js avant l'appel ; § E5.X6 : [1] = 1 si un
+ * dash vient d'être refusé (player.js ; remis à 0 ici) ; [2] = 1 si la silhouette du héros dans la foule est allumée
+ * (silhouette-heros.sync, image précédente) : R1 passe alors par-dessus les robots.
+ */
+export const entree = new Float64Array(3);
+entree[0] = 1;
 
 let crans = null;
+let cransFoule = null; // § E5.X6 (D14) : mêmes crans, sans test de profondeur, dessinés quand le héros est dans la foule
 let anneaux = null;
 let aTeinte = null;
 let aCoeur = null;
 let aBord = null;
 let aForme = null;
 
-function materiauCrans() {
+// § E5.X6 (D14) : foule = la copie dessinée par-dessus les robots. Elle est rendue hors de l'effet CRT (garderNet),
+// directement à l'écran : ni bloom ni passe finale pour éclaircir la teinte linéaire (mesuré : crans éteints invisibles,
+// 0/31 points de l'arc bas). Sa teinte est donc passée en sRGB, × FOULE_GAIN, et son alpha × FOULE_GAIN (plafonné à 1).
+function materiauCrans(foule = false) {
   return new THREE.ShaderMaterial({
     vertexShader: `attribute vec4 aTeinte; varying vec4 vT;
       void main() { vT = aTeinte; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4( position, 1.0 ); }`,
-    fragmentShader: `varying vec4 vT; void main() { gl_FragColor = vec4( vT.rgb, vT.a ); }`,
+    fragmentShader: foule
+      ? `varying vec4 vT; void main() { gl_FragColor = vec4( pow( clamp( vT.rgb * 1.6, 0.0, 1.0 ), vec3( 0.4545 ) ), min( 1.0, vT.a * 1.6 ) ); }`
+      : `varying vec4 vT; void main() { gl_FragColor = vec4( vT.rgb, vT.a ); }`,
     transparent: true,
-    depthTest: true,
+    depthTest: !foule,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -2,
@@ -142,7 +157,7 @@ function instAttr(g, n, k) {
   return a;
 }
 
-export function init(scene) {
+export function init(scene, render = null) {
   // R1 : un cran = un arc couché, centré sur +X local
   const len = TWO_PI / NC - (D.gapDeg * Math.PI) / 180;
   const cg = new THREE.RingGeometry(D.radius - D.width / 2, D.radius + D.width / 2, 4, 1, -len / 2, len);
@@ -155,6 +170,17 @@ export function init(scene) {
   crans.frustumCulled = false;
   crans.count = 0;
   scene.add(crans);
+  // § E5.X6 (D14) : la même géométrie (aTeinte compris) et la même matrice d'instances, matériau sans test de profondeur ;
+  // rangé comme la silhouette du héros (garderNet), juste sous elle : le corps en aplat passe devant l'arc du haut
+  const mf = materiauCrans(true);
+  cransFoule = new THREE.InstancedMesh(cg, mf, NC);
+  cransFoule.name = 'reperes-crans-foule';
+  cransFoule.instanceMatrix = crans.instanceMatrix;
+  cransFoule.frustumCulled = false;
+  cransFoule.count = 0;
+  cransFoule.renderOrder = RENDER.decals.numbersOrder + 0.5;
+  scene.add(cransFoule);
+  if (render && render.garderNet) render.garderNet(cransFoule);
   // anneaux : 0 = onde du ping, 1 = anneau R2, 2-3 = ondes R2
   const ag = geometrieAnneau();
   aCoeur = instAttr(ag, 4, 4);
@@ -181,6 +207,8 @@ export function reset() {
   S.fill(0);
   S[R1_LIT] = NC;
   S[R1_PING] = 1e3;
+  S[R1_REFUS] = 1e3; // § E5.X6
+  entree[1] = 0;
   S[R2_CHANGE] = 1e3;
   S[R2_REF] = P.hp;
   S[R2_HP] = P.hp;
@@ -202,6 +230,11 @@ export function update(dt) {
   if (cd > 0 && (prevCd <= 0 || cd > prevCd + 1e-6)) S[R1_LIT] = 0; // dash lancé : l'anneau se vide d'un coup
   if (prevCd > 0 && cd <= 0) S[R1_PING] = 0; // même pas que audio.play(SFX.DASH_READY)
   else S[R1_PING] += dt;
+  // § E5.X6 (D2) : dash refusé — ping rouge (relancé à chaque refus)
+  if (entree[1] === 1) {
+    entree[1] = 0;
+    S[R1_REFUS] = 0;
+  } else S[R1_REFUS] += dt;
   const total = entree[0] > 0 ? entree[0] : 1;
   const frac = cd > 0 ? 1 - cd / total : 1;
   let lit = cd > 0 ? Math.floor(frac * NC + 1e-9) : NC;
@@ -212,7 +245,7 @@ export function update(dt) {
   S[R1_CD] = cd;
   const vis1 = S[R1_VIS];
   const tFin = S[R1_PING] - D.pingSeconds - D.fadeOutDelay;
-  if (cd > 0 || tFin < 0) S[R1_VIS] = vis1 + dt / D.fadeInSeconds > 1 ? 1 : vis1 + dt / D.fadeInSeconds;
+  if (cd > 0 || tFin < 0 || S[R1_REFUS] < X6_PING) S[R1_VIS] = vis1 + dt / D.fadeInSeconds > 1 ? 1 : vis1 + dt / D.fadeInSeconds;
   else S[R1_VIS] = vis1 - dt / D.fadeOutSeconds < 0 ? 0 : vis1 - dt / D.fadeOutSeconds;
   // ----- R2
   const f = P.maxHp > 0 ? P.hp / P.maxHp : 1;
@@ -333,6 +366,7 @@ export function sync() {
   extra[1] = 0;
   if (!P.alive || I <= 0) {
     crans.count = 0;
+    cransFoule.count = 0; // § E5.X6
     anneaux.count = 0;
     return;
   }
@@ -340,7 +374,11 @@ export function sync() {
   const v1 = S[R1_VIS];
   const u = S[R1_PING] / D.pingSeconds;
   const ping = u < 1 ? 1 - u : 0; // enveloppe du ping (1 → 0)
-  const swell = u < 1 ? 1 + D.pingSwell * Math.sin(Math.PI * Math.sqrt(u)) : 1;
+  let swell = u < 1 ? 1 + D.pingSwell * Math.sin(Math.PI * Math.sqrt(u)) : 1;
+  // § E5.X6 (D2) : ping rouge du refus (enveloppe 1 → 0 en X6_PING s), l'anneau gonfle un instant
+  const ur = S[R1_REFUS] / X6_PING;
+  const refus = ur < 1 ? 1 - ur : 0;
+  if (refus > 0) swell += X6_GONFLE * Math.sin(Math.PI * ur);
   if (v1 > 0) {
     const a1 = (1 - (1 - v1) * (1 - v1)) * I; // fondu : ease-out (la fin s'étire)
     const arr = crans.instanceMatrix.array;
@@ -365,15 +403,28 @@ export function sync() {
         gg += (PING.g - gg) * w;
         b += (PING.b - b) * w;
       }
+      if (refus > 0) {
+        // § E5.X6 (D2) : crans (allumés et éteints) au rouge des yeux des robots, au gain du ping
+        g = g + (D.pingGain - g) * refus;
+        r += (ROUGE.r - r) * refus;
+        gg += (ROUGE.g - gg) * refus;
+        b += (ROUGE.b - b) * refus;
+      }
       t[k * 4] = r * g;
       t[k * 4 + 1] = gg * g;
       t[k * 4 + 2] = b * g;
-      t[k * 4 + 3] = (on ? 0.95 : 0.4) * a1;
+      t[k * 4 + 3] = (on || refus > 0 ? 0.95 : 0.4) * a1;
     }
-    crans.count = NC;
+    // § E5.X6 (D14) : dans la foule, les crans passent par-dessus les robots (un seul des deux maillages est dessiné)
+    const foule = entree[2] === 1;
+    crans.count = foule ? 0 : NC;
+    cransFoule.count = foule ? NC : 0;
     crans.instanceMatrix.needsUpdate = true;
     aTeinte.needsUpdate = true;
-  } else crans.count = 0;
+  } else {
+    crans.count = 0;
+    cransFoule.count = 0; // § E5.X6
+  }
   extra[1] = ping * D.pingAccentGlow * I;
   // ----- anneaux : 0 = onde du ping, 1 = R2, 2-3 = ondes de R2
   let n = 0;
@@ -459,11 +510,11 @@ export function sync() {
 }
 
 export function setVisible(on) {
-  if (crans) crans.visible = anneaux.visible = !!on;
+  if (crans) crans.visible = anneaux.visible = cransFoule.visible = !!on; // § E5.X6 : la copie de la foule suit
 }
 
 export function inspect(out) {
-  out.r1 = { visibilite: S[R1_VIS], crans: S[R1_LIT], pingT: S[R1_PING], dessines: crans ? crans.count : 0 };
+  out.r1 = { visibilite: S[R1_VIS], crans: S[R1_LIT], pingT: S[R1_PING], dessines: crans ? crans.count : 0, refusT: S[R1_REFUS], foule: cransFoule ? cransFoule.count : 0 }; // § E5.X6 : refusT, foule
   out.r2 = { actif: S[R2_ON], visibilite: S[R2_VIS], phase: S[R2_PHASE], depuisChangement: S[R2_CHANGE], gonflement: extra[0], ondes: [waveAge[0], waveAge[1]] };
 }
 
@@ -488,3 +539,7 @@ export function protoAvantHeros() {
   if (proto.actif) sync();
 }
 export const protoInspect = inspect;
+/** § E5.X6 : tests (hors chemin chaud) — les deux maillages des crans de R1. */
+export function maillagesX6() {
+  return { crans, cransFoule };
+}

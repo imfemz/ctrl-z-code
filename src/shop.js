@@ -81,7 +81,7 @@ let shadowDX = 0; // décalage de l'ombre par mètre d'altitude, à l'opposé du
 let shadowDZ = 0;
 
 // Vue persistante, mise à jour sur place par getView().
-const view = { fragments: 0, nextWave: 1, sale: -1, weapons: [] };
+const view = { fragments: 0, nextWave: 1, sale: -1, weapons: [], soin: 0 }; // soin : § E5.X7 (H6), PV rendus à l'ouverture
 view.slots = []; // § E2.C : identifiants des armes possédées, dans l'ordre d'obtention — l'interface n'affiche que celles-là
 
 // Étape 1 du plan addictif (§ E1.D)
@@ -497,7 +497,8 @@ export function isArrivalDone() {
 /** Ouvre la boutique : réparation à l'arrivée, solde du jour tiré, vue préparée. */
 export function open() {
   isOpen = true;
-  if (SHOP.repairOnArrival > 0) ctx.player.heal(SHOP.repairOnArrival * P.maxHp);
+  // § E5.X7 (H6) : les PV réellement rendus, dits sous le titre « Décryptage » (ui.fillShop)
+  view.soin = SHOP.repairOnArrival > 0 ? Math.round(ctx.player.heal(SHOP.repairOnArrival * P.maxHp)) : 0;
   // Soldes (§ E1.D) : UN tirage de randEvent() par boutique, toujours (le calendrier des événements reste à
   // « 2 tirages par vague + 1 par boutique », qu'une offre soit soldée ou non).
   saleOffer = pickSale(randEvent());

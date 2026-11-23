@@ -10,6 +10,7 @@ import { ARGF, F_V } from './state.js'; // § E5.Z : XP des gemmes passée par l
 import { FRAG } from './defis.js'; // § E4.A : fragments gagnés dans la partie (succès « Moissonneur »)
 import { RARITIES, chestRarity } from './config.js'; // § E2.F : cartes d'objet (rareté tirée comme celle d'un lot de coffre)
 import { lignesCarteO } from './config.js'; // § E5.O : soin, synergie, Conversion (une ligne chacun)
+import { synergieArmesX7 } from './config.js'; // § E5.X7 (H12) : armes à critiques dans « Utile avec »
 
 let ctx = null;
 
@@ -211,6 +212,8 @@ function drawCard(k, b) {
   // § E5.O : soin du Blindage, synergie (« Utile avec : … ») et gain réel de Conversion, chacun sur sa ligne (ouverture du choix)
   s.desc += lignesCarteO(b, run.agent, mods.damageTakenMul);
   //#endregion e5:O-noms-guide
+  // § E5.X7 (H12) : la ligne « Utile avec » de la carte Viseur cite aussi Katana et Fumigènes quand l'arme est possédée
+  if (ctx.weapons && ctx.weapons.owned) s.desc += synergieArmesX7(b, ctx.weapons.owned);
   s.stacks = stacks[b];
   s.maxStacks = B.maxStacks;
   s.kind = 'bonus';

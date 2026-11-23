@@ -36,7 +36,8 @@ let chests = null;
 let elites = null; // § E3.A : modificateurs et raretés hautes des porteuses (repli : étape 2)
 const CARRIER = CHESTS.carrier;
 // § E2.G bis G2 : une bannière par rareté (« ÉLITE DÉTECTÉE : CACHE CHIFFRÉE »…), chaînes construites à l'import
-const CARRIER_TEXT = CARRIER_RARITY.labels.map((l) => CARRIER.kicker + ' : ' + l);
+// § E5.X7 (H9) : + le nombre de lots du coffre (« CACHE DORÉE · 3 LOTS » ; CARRIER_RARITY.lots, config.js)
+const CARRIER_TEXT = CARRIER_RARITY.labels.map((l, r) => CARRIER.kicker + ' : ' + l + (CARRIER_RARITY.lots ? CARRIER_RARITY.lots[r] : ''));
 let carriersPlanned = 0;
 let carriersOut = 0;
 

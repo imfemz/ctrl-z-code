@@ -70,6 +70,7 @@ import { ACTION_INTERACT } from './config.js'; // § E5.C : action « Interagir 
 import { ACTION_FICHE } from './config.js'; // menus « Pile » (19/11) : Tab = fiche de l'agent
 import * as utilities from './utilities.js'; // § E3.C : utilitaires
 import * as ramassage from './ramassage.js'; // § E5.E.2 : compteurs de ramassage (lus par le récap de ui.js)
+import { RECAP_T } from './config.js'; // § E5.X7 (H6) : soin de bascule et relance du boss, dans le récap
 import * as combosEtat from './anim/combos.js'; // § E5.E.7 : état des combos (repère du HUD)
 import { HAM_GAP, KAT_GAP } from './weapons-agents.js'; // § E5.E.7 : pause avant le prochain combo du katana ; § E5.F.14 : du marteau
 import * as cooldowns from './cooldowns.js'; // § E3.H : sources à recharge
@@ -1338,6 +1339,7 @@ function noteRecord(n) {
 function basculer() {
   if (isBossWave(run.wave)) {
     run.rerolls += CHOICES.rerollPerBoss; // § E2.D : une vague de boss ne finit qu'à sa mort → +1 relance
+    if (CHOICES.rerollPerBoss > 0) ramassage.RAM_N[RECAP_T.RELANCE_BOSS]++; // § E5.X7 (H6) : « Boss détruit · +1 relance » (récap)
     boss.clearHazards();
     // § E5.V (Femz, 20/11 : « aspire ») : le butin du boss vient au héros comme avant les paliers — coffre (et coffres
     // gardés), butin marqué pKeep, disquette ; le reste du sol ne bouge pas
@@ -1346,7 +1348,14 @@ function basculer() {
     disquette.endWave();
   }
   defis.onWaveTick();
-  if (PALIERS_VAGUES.soinBascule > 0) player.heal(PALIERS_VAGUES.soinBascule * P.maxHp); // § E5.V (Femz, 20/11) : soin à chaque bascule
+  if (PALIERS_VAGUES.soinBascule > 0) {
+    // § E5.V (Femz, 20/11) : soin à chaque bascule ; § E5.X7 (H6) : dit dans le récap (« Nouvelle vague · +N PV », PV réels)
+    const soin = Math.round(player.heal(PALIERS_VAGUES.soinBascule * P.maxHp));
+    if (soin > 0) {
+      ramassage.RAM_N[RECAP_T.SOIN_VAGUE]++;
+      ramassage.RAM_I[RECAP_T.SOIN_VAGUE] += soin;
+    }
+  }
   const rec = noteRecord(run.wave + 1);
   waves.startWave(run.wave + 1, rec, true);
   terminal.onWaveStart(run.wave);
@@ -1639,7 +1648,10 @@ function postSim(realDt) {
         ui.showBanner('Vague ' + run.wave + ' terminée');
         audio.play(SFX.WAVE_CLEAR);
         if (carryN > 0) ui.queueBanner(CARRY.kicker + carryN + (carryN > 1 ? CARRY.banner : CARRY.bannerOne), CARRY.bannerSeconds, SFX.CARRYOVER); // § E3.K
-        if (isBossWave(run.wave)) run.rerolls += CHOICES.rerollPerBoss; // § E2.D : une vague de boss ne finit qu'à sa mort → +1 relance
+        if (isBossWave(run.wave)) {
+          run.rerolls += CHOICES.rerollPerBoss; // § E2.D : une vague de boss ne finit qu'à sa mort → +1 relance
+          if (CHOICES.rerollPerBoss > 0) ramassage.RAM_N[RECAP_T.RELANCE_BOSS]++; // § E5.X7 (H6)
+        }
       } else if (run.pendingChoices > 0) {
         enterLevelUp(STATE.PLAYING); // T6 (priorité 3)
       } else if (run.chests > 0) {

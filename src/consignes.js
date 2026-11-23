@@ -18,22 +18,35 @@ import { COUPS_TOUCHE } from './props.js'; // § E5.AE : coups de pied partis à
 // lecture jamais faite avant l'apparition désoptimisait update, mesuré le 22/11)
 import { CACHEE, DT as TB_DT, MONTREE, SORTIE, VIS, cacher as cacherFleche, chercherBorne, ecran as ecranFleche, init as initFleche, inspect as inspectFleche, syncFleche } from './tuto-bornes.js';
 //#endregion e5:AE-tuto-bornes
+import { RECAP_T } from './config.js'; // § E5.X7 (H16) : 1er fragment ramassé (compteurs du récap)
+import { RAM_N } from './ramassage.js';
 
-const IDS = ['deplacer', 'dash', 'terminal', 'bornes'];
+import { REFUS_X6 } from './state.js'; // § E5.X6 (D6) : touche de frappe pressée sans la Frappe éclair
+
+// § E5.AE : 'bornes' ; § E5.X7 (H15, H16) : 'bonusSol', 'fragments' ; § E5.X6 (D6) : 'frappe' — touche de frappe sans la
+// Frappe éclair. Une fois par PARTIE (pas par profil : rien n'est écrit dans la méta), au 1er appui de la partie
+// (REFUS_X6[2], weapons-agents.js).
+const IDS = ['deplacer', 'dash', 'terminal', 'bornes', 'bonusSol', 'fragments', 'frappe'];
 const DEPLACER = 0;
 const DASH = 1;
 const TERMINAL = 2;
 const BORNES = 3; // § E5.AE : 1re partie, borne à l'écran et PV perdus (ou 45 s sans dégât)
+const BONUS_SOL = 4; // § E5.X7 (H15) : 1er bonus posé au sol — « il disparaît après 30 s »
+const FRAGMENTS = 5; // § E5.X7 (H16) : 1er fragment ramassé — à dépenser chez le marchand, perdus à la fin de la partie
+let fragsVus = 0; // RAM_N des fragments au départ de la partie (§ E5.X7)
+const FRAPPE = 6;
+let frappeVu = 0; // § E5.X6 : REFUS_X6[2] déjà lu
+let frappePartie = false; // § E5.X6 : bulle déjà montrée pendant cette partie
 
 let ctx = null;
 let box = null;
 let forcee = false; // debug : consignes actives malgré ?debug
 const T = new Float64Array(4); // [0] s restantes de la bulle (−1 : jusqu'à la fin du 3-2-1) ; [1] s de jeu depuis le 3-2-1 ; [2] s de déplacement ; [3] fondu restant
 let cur = -1; // consigne affichée (−1 : aucune)
-const file = new Int8Array(4); // consignes en attente
+const file = new Int8Array(IDS.length); // consignes en attente
 let fileN = 0;
 let coupsVus = 0; // COUPS_RECUS au départ de la partie
-const montrees = new Uint8Array(4); // montrées pendant cette page (tests)
+const montrees = new Uint8Array(IDS.length); // montrées pendant cette page (tests)
 let cache = false; // bulle cachée par un écran (choix de niveau, coffre, pause…)
 //#region e5:AE-tuto-bornes
 let forceeBornes = false; // debug : la consigne des bornes active malgré ?debug (demande À PART de __game.consignes)
@@ -76,6 +89,9 @@ export function reset() {
   fileN = 0;
   T.fill(0);
   coupsVus = COUPS_RECUS[0];
+  fragsVus = RAM_N[RECAP_T.FRAGMENTS] + RAM_N[RECAP_T.GROS_FRAGMENT]; // § E5.X7
+  frappeVu = REFUS_X6[2]; // § E5.X6 (D6)
+  frappePartie = false;
   cache = false;
   COUPS_VUS[0] = COUPS_TOUCHE[0]; // § E5.AE
   fonduOn = 0;
@@ -124,7 +140,7 @@ function montrer(k) {
   }
   cur = k;
   montrees[k] = 1;
-  ctx.meta.marquerConsigne(IDS[k]);
+  if (k !== FRAPPE) ctx.meta.marquerConsigne(IDS[k]); // § E5.X6 : la bulle de la frappe n'est pas une consigne du profil
   remplir(k);
   T[0] = k === DEPLACER ? -1 : CONSIGNES[IDS[k]].secondes;
   T[1] = 0;
@@ -200,6 +216,17 @@ function corps() {
     //#region e5:AE-tuto-bornes
     bornes(M);
     //#endregion e5:AE-tuto-bornes
+    // § E5.X7 (H15, H16) : deux entiers lus par image ; la consigne n'est construite qu'une fois par profil
+    if (montrees[BONUS_SOL] === 0 && ctx.utilities && ctx.utilities.getGroundCount() > 0 && !M.consigneVue(IDS[BONUS_SOL])) montrer(BONUS_SOL);
+    if (montrees[FRAGMENTS] === 0 && RAM_N[RECAP_T.FRAGMENTS] + RAM_N[RECAP_T.GROS_FRAGMENT] !== fragsVus && !M.consigneVue(IDS[FRAGMENTS])) montrer(FRAGMENTS);
+    if (REFUS_X6[2] !== frappeVu) {
+      // § E5.X6 (D6) : touche de frappe sans l'arme — une bulle, une seule fois par partie
+      frappeVu = REFUS_X6[2];
+      if (!frappePartie) {
+        frappePartie = true;
+        montrer(FRAPPE);
+      }
+    }
   }
   if (cur < 0) return;
   // cachée (sans compter le temps) sous un écran de choix, la pause, le marchand
@@ -251,7 +278,7 @@ function bornes(M) {
   if (frais === 1 && VIS[0] >= 0) montrer(BORNES);
 }
 
-/** Debug et tests : consigne des bornes active en ?debug (true) ou non (false), à part des trois autres. Rend l'état. */
+/** Debug et tests : consigne des bornes active en ?debug (true) ou non (false), à part des autres. Rend l'état. */
 export function forcerBornes(on) {
   forceeBornes = !!on;
   return forceeBornes;

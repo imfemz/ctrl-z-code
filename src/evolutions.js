@@ -597,7 +597,7 @@ export function isEvolved(w) {
 export function hintFor(w) {
   const id = w >= 0 && w < WEAPON_COUNT ? EVO_OF_WEAPON[w] : -1;
   if (id < 0) return '';
-  return meta.isDiscovered('evolutions', id) ? recipeText(id) : R.hidden;
+  return meta.evoConnue(id) ? recipeText(id) : R.hidden; // § E5.X7 (H2) : découverte OU révélée par un succès (règle de la Collection)
 }
 
 /** « Blaster + Viseur thermique → Canon chiffré » (hors combat). */

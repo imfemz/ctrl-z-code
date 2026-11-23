@@ -14,7 +14,7 @@
 // Allocation (§ V) : dropAt, update et sync n'allouent rien (tableaux typés, boucles en variables locales). roll, take
 // et la vue construisent des chaînes : ils ne tournent que dans l'état CHEST, hors combat (§ E2.0.5).
 import * as THREE from 'three';
-import { weaponLignes } from './config.js'; // 16/11 (13b) ; § E5.O : un chiffre par ligne
+import { STAT, ligneEvoArme, ligneStatX7 } from './config.js'; // § E5.X7 (H2, H3, H10) : évolution, stats en valeurs (weaponLignes n'est plus lu ici)
 import {
   CHESTS,
   EFLAG,
@@ -609,9 +609,24 @@ function isOverchargeable(w) {
   return weapons.owned[w] === 1 && usedWeapons[w] === 0 && weapons.getWeaponLevel(w) >= FULL_LEVEL;
 }
 
+// § E5.X7 (H3 / C5) : la VALEUR avant → après (« Perforation : 0 → 1 robot traversé ») au lieu du rang (« +1 Perforation »).
+// Même calcul que le marchand (shop.getView) : la stat effective (bonus compris) × le rapport des valeurs de table.
+// La stat cachée d'une arme à recharge (canon lourd : « Durée » = la ligne Agit) n'a pas de ligne. Hors combat.
 function statLines(w, lot) {
   lot.lines.length = 0;
-  for (let s = 0; s < STAT_COUNT; s++) if (lot.levels[s] > 0) lot.lines.push('+' + lot.levels[s] + ' ' + WEAPONS[w].statLabels[s]);
+  const own = weapons.owned[w] === 1;
+  const neuve = lot.kind === LOT.WEAPON_NEW; // arme nouvelle : la valeur à son arrivée (« Dégâts : 14 »), jamais « avant »
+  const R = CFG.RECHARGES && CFG.RECHARGES.weapons ? CFG.RECHARGES.weapons[CFG.WEAPON_KEYS[w]] : null;
+  const cache = R && R.hideStat >= 0 && ctx.cooldowns && ctx.cooldowns.isCooldown(0, w) ? R.hideStat : -1;
+  for (let s = 0; s < STAT_COUNT; s++) {
+    const k = lot.levels[s];
+    if ((k <= 0 && !(neuve && s <= STAT.RATE)) || s === cache) continue; // nouvelle arme : Dégâts et Cadence toujours
+    const lv = own ? weapons.getLevel(w, s) : 1;
+    const base = weapons.getStatAt(w, s, lv);
+    const cur = weapons.getStat(w, s);
+    const next = base !== 0 ? (cur / base) * weapons.getStatAt(w, s, lv + k) : weapons.getStatAt(w, s, lv + k);
+    lot.lines.push(ligneStatX7(w, s, neuve ? -1 : cur, next));
+  }
 }
 
 function setRarity(lot, r) {
@@ -629,9 +644,13 @@ function fillWeaponNew(lot, w, r) {
   lot.stacks = 0;
   lot.value = 0;
   lot.name = WEAPONS[w].name;
-  lot.desc = WEAPONS[w].desc + '\n' + weaponLignes(w); // 16/11 (13b) : phrase d'effet, puis les chiffres du niveau 1 (§ E5.O : un par ligne)
+  // § E5.X7 (H10) : « Niveau 1 : Dégâts 12 » portait deux chiffres ; le niveau sur sa ligne, les valeurs à l'arrivée dans
+  // les lignes du lot (statLines : Dégâts et Cadence, plus les stats montées par le lot)
+  lot.desc = WEAPONS[w].desc + '\nNiveau ' + (1 + lot.made); // était : desc + '\n' + weaponLignes(w)
   const CD = ctx.cooldowns; // § E4.G : source à recharge — les chiffres de sa salve au niveau que l'arme aura
   if (CD && CD.isCooldown(0, w)) lot.desc += '\n' + CD.salvesTexte(0, w, 0, 1 + lot.made);
+  const evoN = ligneEvoArme(w, meta.evoConnue); // § E5.X7 (H2) : avec quoi l'arme évolue
+  if (evoN) lot.desc += '\n' + evoN;
   lot.tag = CHESTS.text.newWeapon;
   lot.icon = 'sr-w' + w;
   lot.statLabels = WEAPONS[w].statLabels;
@@ -650,9 +669,12 @@ function fillWeaponUp(lot, w, r) {
   lot.stacks = 0;
   lot.value = 0;
   lot.name = WEAPONS[w].name;
-  lot.desc = 'Niveau ' + weapons.getWeaponLevel(w) + ' → ' + (weapons.getWeaponLevel(w) + lot.made);
+  // § E5.X7 (H3) : la phrase de l'arme d'abord (le lot n'en avait pas), puis le niveau
+  lot.desc = WEAPONS[w].desc + '\nNiveau ' + weapons.getWeaponLevel(w) + ' → ' + (weapons.getWeaponLevel(w) + lot.made);
   const CD = ctx.cooldowns; // § E4.G : l'effet, puis « Recharge 7,0 s → 6,8 s · Action 2,0 s → 2,2 s »
   if (CD && CD.isCooldown(0, w)) lot.desc += '\n' + CD.salvesTexte(0, w, weapons.getWeaponLevel(w), weapons.getWeaponLevel(w) + lot.made);
+  const evoU = ligneEvoArme(w, meta.evoConnue); // § E5.X7 (H2)
+  if (evoU) lot.desc += '\n' + evoU;
   lot.tag = CHESTS.text.upWeapon;
   lot.icon = 'sr-w' + w;
   lot.statLabels = WEAPONS[w].statLabels;

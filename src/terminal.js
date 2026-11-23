@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { MODELES, PALIERS_VAGUES, PALETTE, SFX, TRAUMA, isTerminalWave } from './config.js';
 import { P, run } from './state.js';
 import { chargerPieces } from './anim/pieces.js';
+import { ACTION_INTERACT } from './config.js'; // § E5.X6 (D5) : Interagir hors de portée relance l'anneau de portée
 
 const ABSENT = 0;
 const ARRIVE = 1;
@@ -36,6 +37,9 @@ let etat = ABSENT;
 let ctx = null;
 let mesh = null;
 let modelSettled = Promise.resolve();
+// § E5.X6 (D5, H7) : [0] appuis sur Interagir hors de portée (terminal posé, pas encore utilisé), [1] à portée (0 / 1),
+// lus par le HUD (ui.js) et les tests. Entiers : rien d'alloué.
+export const TX6 = new Int32Array(2);
 
 export function init(context) {
   ctx = context;
@@ -64,6 +68,7 @@ export function whenModelSettled() {
 export function reset() {
   etat = ABSENT;
   TPRET.fill(0);
+  TX6.fill(0); // § E5.X6
   T.fill(0);
   if (mesh) mesh.visible = false;
 }
@@ -182,7 +187,13 @@ export function update(dt) {
         TPRET[0] = 1;
         TPRET[1] = T[TX];
         TPRET[2] = T[TZ];
+      } else if (P.alive && ctx.input && ctx.input.pressed(ACTION_INTERACT)) {
+        // § E5.X6 (D5) : Interagir hors de portée — l'anneau de portée repart tout de suite, le HUD dit « approchez-vous »
+        TX6[0]++;
+        T[PULSE] = 0;
+        if (ctx.fx) ctx.fx.spawnRing(T[TX], T[TZ], R, PALETTE.merchant);
       }
+      TX6[1] = TPRET[0] === 1 ? 1 : 0;
     }
     return;
   }
@@ -250,6 +261,13 @@ export function estPose() {
   return etat === POSE;
 }
 
+/** § E5.X6 (H7) : secondes entières (arrondies au-dessus) avant qu'il reparte seul ; 0 s'il n'est pas posé. Entier (§ V). */
+export function secondesRestantes() {
+  if (etat !== POSE) return 0;
+  const r = Math.ceil(PALIERS_VAGUES.terminal.presence - T[TPOSE]);
+  return r > 0 ? r | 0 : 0;
+}
+
 /** Tests. */
 export function inspect(out = {}) {
   out.etat = ETATS[etat];
@@ -259,5 +277,7 @@ export function inspect(out = {}) {
   out.pret = TPRET[0] === 1;
   out.pose = T[TPOSE];
   out.arrivees = T[ARRIVEES];
+  out.appelsHorsPortee = TX6[0]; // § E5.X6 (D5)
+  out.secondesRestantes = secondesRestantes(); // § E5.X6 (H7)
   return out;
 }

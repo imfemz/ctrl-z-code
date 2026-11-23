@@ -26,6 +26,7 @@ import { FOULE, FOULE_R2 } from './enemies.js';
 import { getMesh } from './anim/heros-anim.js';
 import * as cape from './anim/cape.js'; // la cape (Éclaireur) et les tissus (Shinobi) font partie de la silhouette :
 import * as tissus from './anim/tissus.js'; // sans eux, la cape vue entre les jambes restait sombre dans l'aplat
+import { entree as ENTREE_REPERES } from './anim/reperes.js'; // § E5.X6 (D14) : R1 par-dessus la foule quand la silhouette est allumée
 
 const R = LISIBILITE_GUIDE.silhouette;
 /** Entrée de sync : [0] = pas de temps réel en MICROSECONDES (entier), écrit par main.js (§ V). */
@@ -96,6 +97,7 @@ export function reset() {
   S[2] = 0;
   S[3] = 0;
   FONDU[0] = 0;
+  ENTREE_REPERES[2] = 0; // § E5.X6 (D14)
   if (coul !== null) coul.visible = false;
   for (let k = 0; k < 2; k++) if (tissuSil[k] !== null) tissuSil[k].visible = false;
 }
@@ -141,6 +143,7 @@ export function sync() {
   const m = getMesh();
   if (m === null) {
     if (coul !== null) coul.visible = false;
+    ENTREE_REPERES[2] = 0; // § E5.X6 (D14)
     return;
   }
   if (m !== lie || S[4] !== run.agent) lier(m);
@@ -162,6 +165,7 @@ export function sync() {
   } else if (S[0] > 0) S[0] = Math.max(0, S[0] - ((dt * K[4]) | 0));
   const vu = S[0] > 0 && m.visible;
   coul.visible = vu;
+  ENTREE_REPERES[2] = vu ? 1 : 0; // § E5.X6 (D14)
   for (let k = 0; k < 2; k++) {
     const t = TISSUS[k]();
     if (t === null) continue;

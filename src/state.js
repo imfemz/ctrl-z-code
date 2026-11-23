@@ -128,6 +128,7 @@ export const P = {
   dashDirZ: -1,
   invulnT: 0,
   strikeReq: 0, // 16/11 (point 3) : s restantes de la demande de frappe éclair (touche A / E, gardée STRIKE_KEYS.bufferSeconds)
+  dashReq: 0, // § E5.X6 (D3) : s restantes de la demande de dash (gardée ACTIONS_IMPOSSIBLES.dash.tampon)
 };
 
 // ----- run : la partie en cours --------------------------------------------------------------------------------
@@ -206,6 +207,10 @@ export const SOIN_HEROS = new Float64Array(4);
 export const SOIN_SIGNAUX = new Uint32Array(3);
 //#endregion e5:Q-retours-guide
 export const ARGF = new Float64Array(8);
+// § E5.X6 (lot 7 : le jeu dit quand une action est impossible) — compteurs d'appuis refusés, lus par le HUD (ui.js),
+// la bulle (consignes.js) et les tests : [0] Frappe éclair en recharge (weapons-agents.js), [1] dash en recharge
+// (player.js), [2] touche de frappe sans la Frappe éclair (weapons-agents.js). Entiers : rien d'alloué.
+export const REFUS_X6 = new Int32Array(3);
 
 export function resetMods() {
   mods.maxHpAdd = 0;

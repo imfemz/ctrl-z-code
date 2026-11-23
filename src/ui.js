@@ -43,6 +43,23 @@ import { COMBO, COMBOS, COMBO_ATTAQUE, COMBO_HUD, MARTEAU_COMBO, WEAPON } from '
 import { fragmentsPasse, rareteTexte } from './config.js'; // § E5.L : lot 1 du guide UX (textes et consignes)
 import { HUD_PALIERS, MARCHAND_M3, MARCHAND_PHRASES, PIECE, PIECE_CYCLE, RECAP, RECAP_T, palierNiveau, pieceSequence } from './config.js'; // § E5.E : HUD V5, récap, marchand M3, pièce
 import { RETOURS_GUIDE } from './config.js'; // § E5.Q : cause de la défaite (C2), éclat de la barre au soin (B14)
+import { DECRYPTAGE_X7, HUD_X7 } from './config.js'; // § E5.X7 : soin du marchand, bulles et libellés du HUD, légende de la fiche
+// ----- § E5.X6 (lot 7 : le jeu dit quand une action est impossible) — D1 jauge et tremblement de la case de la Frappe
+// éclair, D5 / H7 bandeau du terminal (touche à portée, « approchez-vous » sinon, temps restant), F11 marchand (« il manque
+// N », prix qui tremble au refus). Compteurs entiers lus à chaque image, DOM écrit seulement quand un entier change.
+import { ACTIONS_IMPOSSIBLES as X6C, BUY as X6_BUY } from './config.js';
+import { REFUS_X6 } from './state.js';
+// (ui.js n'importe que config.js, state.js et ses composants : la jauge de la Frappe passe par weapons.frappeCran et
+// les compteurs du terminal par ctx.terminal.TX6)
+const X6_TREMBLE = ['sr-x6-tremble-a', 'sr-x6-tremble-b'];
+const X6_REFUS_PRIX = ['sr-x6-refus-a', 'sr-x6-refus-b'];
+const X6_CLS_TERM = ['sr-pal-lab sr-pal-lab-term', 'sr-pal-lab sr-pal-lab-term sr-pal-loin', 'sr-pal-lab sr-pal-lab-term sr-pal-loin sr-pal-appel'];
+// [0] REFUS_X6[0] vu, [1] alternance du tremblement, [2] secondes du terminal écrites, [3] classe du bandeau écrite,
+// [4] appels hors de portée vus, [5] alternance du refus au marchand
+const x6Vu = new Int32Array(6).fill(-1);
+const x6T = new Float64Array(1); // s restantes de la mise en avant de « approchez-vous » (temps réel)
+let palX6Sec = null;
+let palX6Term = null;
 
 // ----- § E3.H : jauge horloge sur les cases d'arme et d'objet (élément .sr-case-cd du composant de J) ---------------
 // Grisée qui se remplit dans le sens d'une horloge (variable CSS --sr-cd, 0 → 1), cachée quand c'est prêt (pleine
@@ -1498,8 +1515,15 @@ function buildHud() {
     for (let k = 0; k < PAL_N; k++) palSegs.push(segs.appendChild(el('i', CLS_PAL_SEG[0])));
     segs.appendChild(el('i', 'sr-pal-dia'));
     const term = el('div', 'sr-pal-lab sr-pal-lab-term', PALIERS_VAGUES.hud.terminal + ' ');
+    // § E5.X6 (H7) : « · 24 s » — le temps avant qu'il reparte (secondes écrites quand elles changent)
+    const temps = el('span', 'sr-pal-temps');
+    palX6Sec = el('span', 'sr-num sr-pal-sec', '');
+    temps.append(document.createTextNode(X6C.terminal.separateur.trimStart()), palX6Sec, document.createTextNode(X6C.terminal.unite));
+    term.appendChild(temps);
+    palX6Term = term;
     palTouche = el('span', 'sr-pal-touche', '');
     term.appendChild(palTouche);
+    term.appendChild(el('span', 'sr-pal-approche', X6C.terminal.approchez)); // § E5.X6 (D5) : à la place de la touche, hors de portée
     if (PALIERS_VAGUES.hud.terminalEffet) term.appendChild(el('span', 'sr-pal-effet', PALIERS_VAGUES.hud.terminalEffet.trim())); // § E5.L (A9) : ce qu'il apporte
     palDec = el('div', 'sr-pal-lab sr-pal-lab-dec', PALIERS_VAGUES.hud.decryptage);
     palier.append(segs, palDec, term);
@@ -1624,6 +1648,7 @@ function buildHud() {
   // la barre est construite hors du document (la recharge se lit sur le repère R1 au sol, anim/reperes.js).
   bottom.append(weaponBox, itemBox, hpRow);
   hud.appendChild(bottom);
+  hudX7(weaponBox, itemBox, frag); // § E5.X7 (A13 / F6) : libellés courts et bulles au survol
 
   // Flèches de bord d'écran : la DERNIÈRE couche du HUD, donc peinte au-dessus des pastilles, de la barre du boss et
   // des bandes du bas. Une flèche dont la direction croise un de ces blocs doit rester visible : c'est elle qui
@@ -2014,6 +2039,7 @@ function buildFiche() {
   }
   // § E3.I (img2) : plus de ligne du bas « VAGUE · ROBOTS · chrono · fragments » — le HUD la montre déjà
   fiche.append(niv, corps, grille, ficheObjetsBox);
+  fiche.appendChild(legendeX7()); // § E5.X7 (A13) : repères du HUD (pause seulement : cachée au Noyau par ui.css)
   ficheCarac = buildCarac(); // § E4.E.2 : colonne CARACTÉRISTIQUES, posée à gauche de la fiche (ui.css)
   fiche.appendChild(ficheCarac.box);
   return fiche;
@@ -2218,6 +2244,9 @@ function buildShop() {
   next.appendChild(shopNext);
   headLeft.append(el('h2', null, PALIERS_VAGUES.nomDecryptage), next); // § E5.V : « Décryptage » (marchand ou terminal)
   if (PALIERS_VAGUES.explication) headLeft.appendChild(el('p', 'sr-shop-explique', PALIERS_VAGUES.explication)); // § E5.L : « Décryptage » expliqué
+  // § E5.X7 (H6, H16) : le soin reçu à l'ouverture (PV réels), puis ce que deviennent les fragments
+  shopSoinX7 = el('p', 'sr-shop-explique sr-shop-soin', '');
+  headLeft.append(shopSoinX7, el('p', 'sr-shop-explique sr-shop-perdus', DECRYPTAGE_X7.fragments));
   const balance = el('div', 'sr-shop-balance');
   shopBalance = el('span', 'sr-num', '0');
   balance.append(icon('sr-i-frag'), shopBalance, el('span', 'sr-shop-balance-label', 'fragments'));
@@ -2270,7 +2299,7 @@ function buildShop() {
     const statBox = el('div', 'sr-stats');
     const rows = [];
     for (let s = 0; s < STAT_COUNT; s++) {
-      const row = pressable(el('button', 'sr-stat'), () => actions.buy(w * 8 + 1 + s));
+      const row = pressable(el('button', 'sr-stat'), () => x6Achat(w * 8 + 1 + s, price)); // § E5.X6 (F11) : refus visible
       row.addEventListener('pointerenter', () => shopVoirLigne(w, s));
       const label = el('span', 'sr-stat-label', WEAPONS[w].statLabels[s]);
       row.appendChild(label);
@@ -2285,15 +2314,16 @@ function buildShop() {
       const cost = el('span', 'sr-stat-cost sr-num', '');
       const costIcon = icon('sr-i-frag');
       costIcon.classList.add('sr-stat-cost');
-      price.append(costIcon, cost, el('span', 'sr-stat-max', 'max'));
+      const manque = el('span', 'sr-stat-manque', ''); // § E5.X6 (F11) : « il manque N » sur une ligne trop chère
+      price.append(costIcon, cost, el('span', 'sr-stat-max', 'max'), manque);
       row.append(value, price, el('span', 'sr-sale-tag', SHOP.sale.label));
       statBox.appendChild(row);
-      rows.push({ row, label, pips: list, cur, nxt, unit, gain, cost, level: -1, offre: w * 8 + 1 + s });
+      rows.push({ row, label, pips: list, cur, nxt, unit, gain, cost, manque, level: -1, offre: w * 8 + 1 + s });
     }
     // Surcharge (§ E1.D) : la ligne n'existe à l'écran que pour une arme au niveau 21 (offerId = w × 8 + 7). Elle prend
     // alors LA PLACE de la description (même hauteur : la carte ne grandit pas, les rangées restent alignées et la
     // boutique tient toujours dans la fenêtre) — ui.css l'affiche entre l'en-tête et les stats.
-    const ocRow = pressable(el('button', 'sr-stat sr-overcharge'), () => actions.buy(w * 8 + 7));
+    const ocRow = pressable(el('button', 'sr-stat sr-overcharge'), () => x6Achat(w * 8 + 7, ocPrice)); // § E5.X6 (F11)
     ocRow.addEventListener('pointerenter', () => shopVoirLigne(w, 7));
     ocRow.dataset.offre = String(w * 8 + 7);
     const ocLabel = el('span', 'sr-stat-label', SHOP.overcharge.label);
@@ -2307,10 +2337,11 @@ function buildShop() {
     const ocCost = el('span', 'sr-stat-cost sr-num', '');
     const ocIcon = icon('sr-i-frag');
     ocIcon.classList.add('sr-stat-cost');
-    ocPrice.append(ocIcon, ocCost);
+    const ocManque = el('span', 'sr-stat-manque', ''); // § E5.X6 (F11)
+    ocPrice.append(ocIcon, ocCost, ocManque);
     ocRow.append(ocLabel, ocLevel, ocValue, ocPrice, el('span', 'sr-sale-tag', SHOP.sale.label));
     ocRow.style.display = 'none';
-    const oc = { row: ocRow, level: ocLevel, cur: ocCur, nxt: ocNext, gain: ocGain, cost: ocCost, shown: false, last: -1 };
+    const oc = { row: ocRow, level: ocLevel, cur: ocCur, nxt: ocNext, gain: ocGain, cost: ocCost, manque: ocManque, shown: false, last: -1 };
 
     // § E4.S.8 — marchand v2 : carte VERTICALE (icône en haut, nom, niveau), puis 2 ou 3 améliorations en UNE ligne
     // chacune avec leur prix (lignesBox) ; les autres et la description longue vont dans le détail (detailBox), montré au
@@ -2968,6 +2999,23 @@ function shopRanger(u, v) {
   }
 }
 
+/** § E5.X6 (F11) : « il manque N » (N = prix − fragments entiers, au moins 1) — marchand ouvert, pas une image de jeu. */
+function x6Manque(cost, fragments) {
+  const n = Math.max(1, Math.ceil(cost - Math.floor(fragments)));
+  return X6C.marchand.manque + intStr(n);
+}
+
+/** § E5.X6 (F11) : achat d'une ligne ; refusé (BUY ≠ OK) → le prix tremble en rouge (deux noms : l'animation repart). */
+function x6Achat(offre, prix) {
+  const r = actions.buy(offre);
+  if (r !== X6_BUY.OK && r !== X6_BUY.CLOSED && prix) {
+    prix.classList.remove(X6_REFUS_PRIX[x6Vu[5] & 1]);
+    x6Vu[5] = (x6Vu[5] + 1) & 1;
+    prix.classList.add(X6_REFUS_PRIX[x6Vu[5] & 1]);
+  }
+  return r;
+}
+
 function fillShop(data, fresh) {
   if (fresh) {
     shopFocus.carte = -1;
@@ -2976,6 +3024,7 @@ function fillShop(data, fresh) {
     shopLigneVue.w = -1;
   }
   if (shopBalanceBox) shopBalanceBox.dataset.bulle = intStr(Math.floor(data.fragments)) + ' fragments';
+  if (shopSoinX7) setText(shopSoinX7, data.soin > 0 ? DECRYPTAGE_X7.soin.replace('{n}', intStr(data.soin)) : DECRYPTAGE_X7.soinPlein); // § E5.X7 (H6)
   // Solde en fragments entiers (ce qu'on peut dépenser : les prix sont entiers), comme la pastille du HUD.
   const balance = intStr(Math.floor(data.fragments));
   if (shopBalance.textContent !== balance) {
@@ -3044,6 +3093,7 @@ function fillShop(data, fresh) {
         setText(r.cost, intStr(st.cost));
         setClass(r.row, (st.affordable ? 'sr-stat' : 'sr-stat sr-disabled sr-poor') + (st.onSale ? ' sr-sale' : ''));
       }
+      setText(r.manque, state === 2 && !st.maxed && !st.affordable ? x6Manque(st.cost, data.fragments) : ''); // § E5.X6 (F11)
     }
     // Surcharge (§ E1.D) : ligne affichée seulement quand l'arme est au niveau 21 ; le cran acheté rebondit.
     const oc = v.overcharge;
@@ -3065,6 +3115,7 @@ function fillShop(data, fresh) {
       setText(o.nxt, '+' + oc.nextPercent + ' %');
       setText(o.gain, gainTexte(oc.percent, oc.nextPercent, '%')); // § E5.E.3 (M3)
       setText(o.cost, intStr(oc.cost));
+      setText(o.manque, oc.affordable ? '' : x6Manque(oc.cost, data.fragments)); // § E5.X6 (F11)
       setClass(o.row, (oc.affordable ? 'sr-stat sr-overcharge' : 'sr-stat sr-overcharge sr-disabled sr-poor') + (oc.onSale ? ' sr-sale' : ''));
     } else o.last = -1;
     // « A3 » : case de l'arsenal (visible si l'arme est possédée, même ordre) et couleur du PALIER de niveau (--c) de la
@@ -3593,6 +3644,7 @@ export function setScreen(id, data) {
   // § E4.E.1 (demande de Femz du 16/11) : fiche (pause) ou écran de fin ouverts → le bloc du bas du HUD sort du cadre
   // vers le bas (et la colonne d'objets vers la gauche), en glissant ; il revient à la reprise. Hors combat.
   if (hud) hud.classList.toggle('sr-hud-retire', id === SCREEN.PAUSE || id === SCREEN.GAMEOVER);
+  bulleX7Cacher(); // § E5.X7 : un écran s'ouvre, la bulle du HUD se ferme
   // En partie (aucun écran), la souris ne sert à rien : son curseur est caché.
   document.documentElement.classList.toggle('sr-en-jeu', !shown);
 }
@@ -3858,6 +3910,32 @@ function majPalier(shownState, wave, clock) {
   }
 }
 
+/** § E5.X6 (D5, H7) : bandeau du terminal posé — temps restant, touche à portée, « approchez-vous » sinon (mis en avant
+ * X6C.terminal.appelS s après un appui hors de portée). Entiers comparés : le DOM n'est écrit qu'aux changements. */
+function majTerminalX6(realDt) {
+  const dispo = ctx.terminal && ctx.terminal.estDisponible();
+  const X6_TERM = ctx.terminal.TX6;
+  if (!dispo) {
+    x6T[0] = 0;
+    x6Vu[4] = X6_TERM[0];
+    return;
+  }
+  const sec = ctx.terminal.secondesRestantes();
+  if (sec !== x6Vu[2]) {
+    x6Vu[2] = sec;
+    palX6Sec.textContent = intStr(sec);
+  }
+  if (X6_TERM[0] !== x6Vu[4]) {
+    if (x6Vu[4] >= 0) x6T[0] = X6C.terminal.appelS;
+    x6Vu[4] = X6_TERM[0];
+  } else if (x6T[0] > 0 && realDt > 0) x6T[0] = x6T[0] > realDt ? x6T[0] - realDt : 0;
+  const etat = X6_TERM[1] === 1 ? 0 : x6T[0] > 0 ? 2 : 1;
+  if (etat !== x6Vu[3]) {
+    x6Vu[3] = etat;
+    palX6Term.className = X6_CLS_TERM[etat];
+  }
+}
+
 function updateBeacon() {
   let show = false;
   // § E5.V : la capsule garde la priorité ; sinon le terminal posé (pas encore utilisé)
@@ -4046,6 +4124,7 @@ export function update(realDt) {
     }
   }
   if (palier !== null) majPalier(shownState, wave, clock);
+  if (palX6Term !== null) majTerminalX6(realDt); // § E5.X6 (D5, H7)
   // Record (§ E1.D) : la vague du meilleur score (« — » sans record) ; cyan dès qu'il est battu pendant la partie.
   const best = game.best;
   const record = best ? Math.floor(best.wave) : 0;
@@ -4083,7 +4162,7 @@ export function update(realDt) {
       if (w >= 0) {
         slot.use.setAttribute('href', ev >= 0 ? EVO_HREF[ev] : SLOT_HREF[w]);
         slot.slot.style.setProperty('--wc', SLOT_COLOR[w]);
-        slot.slot.title = ev >= 0 ? EVO_TITLE[ev] : SLOT_TITLE[w];
+        slot.slot.setAttribute('aria-label', ev >= 0 ? EVO_TITLE[ev] : SLOT_TITLE[w]); // § E5.X7 : plus de title (la bulle du jeu le remplace)
       }
     }
     if (lv !== lastWeaponLevel[k]) {
@@ -4101,7 +4180,19 @@ export function update(realDt) {
     // § E5.E.7 : lame de phase, katana (et marteau enchaîné, § E5.F.14) — crans du combo en cours, horloge de la pause avant le combo suivant, éclat « prêt »
     const cb = w >= 0 && lv > 0 && cbHud !== null && slot.combo ? CB_DE_ARME[w] : -1;
     if (cb >= 0 && k < CD_SLOTS) paintCd(slot.cd, k, comboCran(k, cb, slot.combo), realDt);
-    else if (slot.cd && cdMod !== null && k < CD_SLOTS) paintCd(slot.cd, k, w >= 0 && lv > 0 && cdMod.isCooldown(0, w) ? cdMod.stepOf(0, w, RECHARGE.steps) : -1, realDt); // cran entier (§ V)
+    else if (slot.cd && w === WEAPON.FLASH && lv > 0 && k < CD_SLOTS) {
+      paintCd(slot.cd, k, weapons.frappeCran(RECHARGE.steps), realDt); // § E5.X6 (D1) : jauge horloge de la Frappe éclair
+      if (REFUS_X6[0] !== x6Vu[0]) {
+        // § E5.X6 (D1) : appui refusé pendant la recharge — l'icône tremble (deux noms : l'animation repart à chaque refus)
+        if (x6Vu[0] >= 0 && slot.use) {
+          const ic = slot.use.parentNode;
+          ic.classList.remove(X6_TREMBLE[x6Vu[1] & 1]);
+          x6Vu[1]++;
+          ic.classList.add(X6_TREMBLE[x6Vu[1] & 1]);
+        }
+        x6Vu[0] = REFUS_X6[0];
+      }
+    } else if (slot.cd && cdMod !== null && k < CD_SLOTS) paintCd(slot.cd, k, w >= 0 && lv > 0 && cdMod.isCooldown(0, w) ? cdMod.stepOf(0, w, RECHARGE.steps) : -1, realDt); // cran entier (§ V)
   }
 
   // § E2.F : rangée des objets — rien n'est réécrit tant que rien ne change (objet de la case, piles, recharge).
@@ -4123,7 +4214,7 @@ export function update(realDt) {
         if (id >= 0) {
           s.use.setAttribute('href', ITEM_HREF[id]);
           s.slot.style.setProperty('--ic', ITEM_COLOR[id]);
-          s.slot.title = ITEM_TITLE[id];
+          s.slot.setAttribute('aria-label', ITEM_TITLE[id]); // § E5.X7 : plus de title (la bulle du jeu le remplace)
         }
       }
       const st = id < 0 ? 2 : itemsMod.slotCharging(k) ? 1 : 0;
@@ -5858,3 +5949,86 @@ function rangRarete(nom) {
   return nom;
 }
 //#endregion e5:L-textes-guide
+
+// ===== § E5.X7 — lot 11 de l'audit (A13 / F6, H6) : HUD qui dit ce qu'il montre ========================================
+// Le HUD garde pointer-events: none ; seules les cases d'arme et d'objet, la pastille des fragments et la puce CPU
+// reçoivent le survol (ui.css, bloc § E5.X7). Une SEULE bulle (pointer-events: none), posée dans la case et remplie au survol : les textes
+// sont faits à ce moment-là (un geste de la souris, jamais dans update). Le clic droit du déplacement à la souris
+// n'est pas gêné : input.js écoute window (l'évènement remonte depuis la case) et lit clientX / clientY.
+let bulleX7 = null;
+let bulleX7Cle = '';
+let shopSoinX7 = null; // § E5.X7 (H6) : « Soin du marchand : +N PV » sous le titre « Décryptage »
+
+function hudX7(weaponBox, itemBox, frag) {
+  weaponBox.dataset.lab = HUD_X7.armes; // libellés courts (ui.css : attr(data-lab), pseudo-élément : aucun enfant de plus)
+  itemBox.dataset.lab = HUD_X7.objets;
+  for (let k = 0; k < weaponBox.children.length; k++) weaponBox.children[k].dataset.x7 = 'a' + k;
+  for (let k = 0; k < itemBox.children.length; k++) itemBox.children[k].dataset.x7 = 'o' + k;
+  frag.dataset.x7 = 'f';
+  const pc = hud.querySelector('.sr-hud-puce');
+  if (pc) pc.dataset.x7 = 'p';
+  bulleX7 = el('div', 'sr-hud-bulle');
+  bulleX7.setAttribute('role', 'tooltip');
+  hud.appendChild(bulleX7); // déplacée dans la case survolée (bulleX7Montrer)
+  hud.addEventListener('pointerover', (e) => {
+    const c = e.target && e.target.closest ? e.target.closest('[data-x7]') : null;
+    if (c) bulleX7Montrer(c);
+  });
+  hud.addEventListener('pointerout', (e) => {
+    const c = e.target && e.target.closest ? e.target.closest('[data-x7]') : null;
+    if (c && !(e.relatedTarget && c.contains(e.relatedTarget))) bulleX7Cacher();
+  });
+}
+
+/** Lignes de la bulle de la case c (hors combat : au survol). */
+function bulleX7Lignes(cle) {
+  const k = Number(cle.slice(1));
+  if (cle[0] === 'a') {
+    const w = weapons !== null ? weapons.slots[k] : -1;
+    if (!(w >= 0)) return ['Case d’arme vide', 'Un coffre peut vous donner une arme.'];
+    const ev = evoDe(w);
+    return [HUD_X7.arme.replace('{n}', ev >= 0 ? EVOLUTIONS[ev].name : WEAPONS[w].name).replace('{v}', intStr(weapons.getWeaponLevel(w))), ev >= 0 ? EVOLUTIONS[ev].rule : WEAPONS[w].desc];
+  }
+  if (cle[0] === 'o') {
+    const id = itemsMod !== null ? itemsMod.slots[k] : -1;
+    if (!(id >= 0)) return ['Case d’objet vide', 'Les cartes de niveau et les coffres donnent des objets.'];
+    const t = HUD_X7.objet.replace('{n}', ITEM_TITLE[id]).replace('{v}', intStr(itemsMod.slotStacks(k)));
+    if (id >= ITEM_COUNT) return [t, ITEMS[FUSIONS[id - ITEM_COUNT].a].name + ' + ' + ITEMS[FUSIONS[id - ITEM_COUNT].b].name];
+    const I = ITEMS[id];
+    return [t, I.what.charAt(0).toUpperCase() + I.what.slice(1) + ' : ' + itemText(id, itemsMod.getStacks(id))];
+  }
+  return cle === 'f' ? HUD_X7.fragments : HUD_X7.puce;
+}
+
+function bulleX7Montrer(c) {
+  if (bulleX7 === null || screen !== SCREEN.NONE) return;
+  const cle = c.dataset.x7;
+  bulleX7Cle = cle;
+  const lignes = bulleX7Lignes(cle);
+  bulleX7.replaceChildren();
+  for (let q = 0; q < lignes.length; q++) bulleX7.appendChild(el('div', q === 0 ? 'sr-hud-bulle-t' : 'sr-hud-bulle-l', lignes[q]));
+  // placée par ui.css DANS la case survolée (toutes positionnées) : au-dessus d'une arme, à droite d'un objet ou de la
+  // puce, sous les fragments — aucune lecture de mise en page dans ui.js (règle contrôlée par tests/ui.test.mjs)
+  if (bulleX7.parentNode !== c) c.appendChild(bulleX7);
+  bulleX7.className = 'sr-hud-bulle sr-on sr-hud-bulle-' + cle[0];
+}
+
+function bulleX7Cacher() {
+  if (bulleX7 === null || bulleX7Cle === '') return;
+  bulleX7Cle = '';
+  bulleX7.className = 'sr-hud-bulle';
+}
+
+/** § E5.X7 (A13) : bloc « Repères du HUD » de la fiche (pause). */
+function legendeX7() {
+  const box = el('div', 'sr-fiche-legende');
+  box.appendChild(el('div', 'sr-fiche-legende-t', HUD_X7.legendeTitre));
+  for (const l of HUD_X7.legende) box.appendChild(el('div', 'sr-fiche-legende-l', l));
+  return box;
+}
+
+/** Tests : bulle affichée { cle, texte } (null : cachée) ; sa place se mesure dans le test (.sr-hud-bulle). */
+export function bulleX7Inspect() {
+  if (bulleX7 === null || bulleX7Cle === '') return null;
+  return { cle: bulleX7Cle, texte: [...bulleX7.children].map((n) => n.textContent) };
+}

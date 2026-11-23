@@ -9732,3 +9732,113 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 [data-sr-theme='carte-mere'] .sr-banner.sr-reste .sr-banner-kicker::before {
   content: '';
 }
+
+/* ===== § E5.X7 — lot 11 de l'audit (A13 / F6) : HUD qui dit ce qu'il montre =========================================
+   Libellés courts (attr(data-lab) : pseudo-éléments, aucun enfant de plus dans les rangées), survol des seules cases
+   d'arme, d'objet, de la pastille des fragments et de la puce (le reste du HUD laisse passer la souris), une bulle
+   unique placée par ui.js (bulleX7Montrer), le curseur revient au-dessus d'une case. Repères du HUD dans la fiche. */
+.sr-hud .sr-weapons[data-lab]::before,
+.sr-hud .sr-items[data-lab]::before {
+  content: attr(data-lab);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 0.15rem);
+  font: 500 0.625rem/1 var(--sr-mono);
+  letter-spacing: 0.12em;
+  color: var(--ca-texte, #e8f4ec);
+  opacity: 0.7;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* « ARMES » à GAUCHE de la rangée, en haut (au-dessus : la barre de PV, 0,45 rem d'écart ; dessous : l'XP), sur un
+   petit fond qui masque les pistes du faisceau à cet endroit */
+.sr-hud .sr-weapons[data-lab]::before {
+  left: auto;
+  right: calc(100% + 0.35rem);
+  bottom: auto;
+  top: 0;
+  padding: 0.15rem 0.3rem;
+  background: var(--ca-fond, #061e0f);
+  opacity: 0.85;
+}
+.sr-hud .sr-weapon,
+.sr-hud .sr-item,
+.sr-hud .sr-frag,
+.sr-hud .sr-hud-puce {
+  pointer-events: auto;
+}
+html.sr-en-jeu #ui-root .sr-hud [data-x7],
+html.sr-en-jeu #ui-root .sr-hud [data-x7] *,
+html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root .sr-hud [data-x7],
+html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root .sr-hud [data-x7] * {
+  cursor: default;
+}
+.sr-hud-bulle {
+  position: absolute;
+  z-index: 40;
+  width: max-content;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  display: none;
+  max-width: 18rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--ca-fond, #061e0f);
+  box-shadow: inset 0 0 0 1px var(--ca-bord, #74e09a), 0 0 0 1px var(--ca-ombre, #000);
+  color: var(--ca-texte, #e8f4ec);
+  pointer-events: none;
+}
+.sr-hud-bulle.sr-on {
+  display: block;
+}
+/* la rangée (ou la colonne) qui porte la bulle passe au-dessus de la barre de PV, peinte après elle */
+.sr-hud .sr-weapons:has(.sr-hud-bulle.sr-on),
+.sr-hud .sr-items:has(.sr-hud-bulle.sr-on) {
+  z-index: 30;
+}
+/* place selon la case (la bulle est l'enfant de la case survolée, toutes positionnées) */
+.sr-hud-bulle-a {
+  left: 50%;
+  bottom: calc(100% + 0.5rem);
+  transform: translateX(-50%);
+}
+.sr-hud-bulle-o,
+.sr-hud-bulle-p {
+  left: calc(100% + 0.5rem);
+  top: 50%;
+  transform: translateY(-50%);
+}
+.sr-hud-bulle-f {
+  right: 0;
+  top: calc(100% + 0.5rem);
+}
+.sr-hud-bulle-t {
+  font: 500 0.75rem/1.25 var(--sr-mono);
+  letter-spacing: 0.02em;
+}
+.sr-hud-bulle-l {
+  margin-top: 0.2rem;
+  font: 0.6875rem/1.3 var(--sr-text, var(--sr-mono));
+  opacity: 0.85;
+}
+.sr-fiche-legende {
+  margin-top: 0.5rem;
+  padding-top: 0.35rem;
+  box-shadow: inset 0 1px 0 var(--cy-line-2, rgba(116, 224, 154, 0.25));
+}
+.sr-fiche-legende-t {
+  font: 500 0.625rem/1.3 var(--sr-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.sr-fiche-legende-l {
+  font: 0.6875rem/1.35 var(--sr-text, var(--sr-mono));
+  opacity: 0.85;
+}
+.sr-fiche.sr-fiche-noyau .sr-fiche-legende {
+  display: none;
+}
+.sr-shop-soin {
+  color: var(--sr-vert, #5cff8a);
+}
