@@ -22,6 +22,7 @@ import {
   isPlayerSource,
 } from './config.js';
 import { ARGF, E, F_DX, F_DZ, F_SX, F_SZ, F_T, F_V, F_X, F_Z, P, mods, rand, run } from './state.js';
+import { ORIGINE_COUP } from './state.js'; // § E5.AK : origine d'un obus (coup mortel)
 import { CHESTS, CHEST_FLAG, RARITY } from './config.js'; // § E2.C : coffre de l'élite porteuse ; § E2.G bis : drapeaux
 import { AGENT, AGENTS } from './config.js'; // § E2.D : passifs des agents (critique de près, recharge du dash)
 import { UTIL } from './config.js'; // § E3.C
@@ -31,6 +32,26 @@ import * as defis from './defis.js'; // § E4.A : compteurs des succès (robots 
 import { BOUCLIER } from './config.js'; // § E4.P : bouclier du blindé (impact atténué, fissure à mi-vie)
 import { COMBAT_GUIDE } from './config.js'; // § E5.N : anneau d'acier sans bouclier (Femz, 21/11)
 import { CAUSE_COUNT } from './config.js'; // § E5.Q (C2) : cause de chaque coup reçu
+//#region e5:AJ-equilibrage-aoe
+// § E5.AJ : résistance aux dégâts de zone (DMG_ZONE) — boss, blindés, élites ; pas les blindés de l'anneau d'acier.
+// Tables lues une fois ; dans hitEnemyF : deux lectures de drapeaux et un multiplicateur constant (aucune allocation).
+import { AOE, DMG_ZONE, ENEMY_KEYS } from './config.js';
+const ZONE_RES = new Uint8Array(ENEMY_COUNT); // 1 : le type résiste aux coups de zone
+for (const k of AOE.types) if (ENEMY_KEYS.indexOf(k) >= 0) ZONE_RES[ENEMY_KEYS.indexOf(k)] = 1;
+const ZONE_ELITE = AOE.elites ? EFLAG.ELITE : 0; // drapeau qui rend résistant, quel que soit le type
+const ZONE_EXEMPT = AOE.anneauExempte ? EFLAG.WALL : 0; // drapeau qui retire la résistance (anneau d'acier)
+const ZONE_MUL = 1 - AOE.resistance; // part des dégâts de zone qui passe (0,2)
+/** § E5.AJ : [0] coups de zone portés, [1] coups de zone réduits par la résistance (entiers, tests). */
+export const ZONE_N = new Uint32Array(2);
+/** § E5.AJ : coup de zone sur le robot i de type t — 1 s'il résiste (compté), 0 sinon. Entiers seulement. */
+function zoneF(i, t) {
+  ZONE_N[0]++;
+  const f = E.flags[i];
+  if ((ZONE_RES[t] === 0 && (f & ZONE_ELITE) === 0) || (f & ZONE_EXEMPT) !== 0) return 0;
+  ZONE_N[1]++;
+  return 1;
+}
+//#endregion e5:AJ-equilibrage-aoe
 const ANNEAU_SANS_BOUCLIER = COMBAT_GUIDE.blinde && COMBAT_GUIDE.blinde.anneauSansBouclier ? EFLAG.WALL : 0;
 const BI = BOUCLIER.impact;
 const BF = BOUCLIER.fissure;
@@ -148,11 +169,14 @@ export function reset() {
   bossBlocks = 0;
   fissures = 0;
   crits = 0;
+  ZONE_N.fill(0); // § E5.AJ
   dealtBySource.fill(0);
   hitsBySource.fill(0);
   killsBySource.fill(0);
   DEGATS_CAUSE.fill(0); // § E5.Q (C2)
   MORT_CAUSE[0] = 0;
+  MORT_POS.fill(0); // § E5.AK
+  ORIGINE_COUP.fill(0);
 }
 
 /** Le type a un bouclier et la source est dans son arc frontal. Source sur le robot : pas d'arrêt. */
@@ -228,6 +252,9 @@ export function hitEnemyF(i, source, flags) {
   }
   // 2 bis. § E3.C : Overclocking (dégâts × UMUL[1] pendant sa durée ; 1 sinon) — coups du joueur seulement
   if (UMUL !== null && isPlayerSource(source)) amount *= UMUL[1];
+  // 2 ter. § E5.AJ : coup de zone sur un boss, un blindé ou une élite (hors anneau d'acier) → × ZONE_MUL (test à part,
+  // zoneF, qui rend un entier : le corps de hitEnemyF garde sa taille — grossi, V8 ne l'optimisait plus, § E2 bulle)
+  if ((flags & DMG_ZONE) !== 0 && zoneF(i, t) === 1) amount *= ZONE_MUL;
   // 3. critique
   let crit = false;
   if ((flags & DMG.NO_CRIT) === 0 && debug.isCritEnabled()) {
@@ -532,6 +559,10 @@ export const SOURCE_JOUEUR = new Float64Array(2);
 export const DEGATS_CAUSE = new Float64Array(CAUSE_COUNT);
 export const MORT_CAUSE = new Uint8Array(1);
 //#endregion e5:Q-retours-guide
+//#region e5:AK-mort-claire
+/** § E5.AK : d'où est venu le coup mortel (x, z) — origine écrite par l'auteur (state.ORIGINE_COUP), sinon le point du coup. */
+export const MORT_POS = new Float64Array(2);
+//#endregion e5:AK-mort-claire
 
 /**
  * Robot → joueur. amount contient déjà le multiplicateur de vague. Renvoie les dégâts du coup s'il a porté, 0 sinon.
@@ -578,6 +609,10 @@ export function hitPlayer(amount, kind, srcX, srcZ, cause = 0) {
     P.hp = 0;
     P.alive = false;
     MORT_CAUSE[0] = c; // § E5.Q (C2)
+    //#region e5:AK-mort-claire
+    MORT_POS[0] = ORIGINE_COUP[2] === 1 ? ORIGINE_COUP[0] : srcX; // § E5.AK : d'où il est venu (obus : là d'où il est parti)
+    MORT_POS[1] = ORIGINE_COUP[2] === 1 ? ORIGINE_COUP[1] : srcZ;
+    //#endregion e5:AK-mort-claire
     fx.spawnExplosion(P.x, P.z, 3, FXK.PLAYER_DEATH);
   }
   return amount;
@@ -625,6 +660,7 @@ export function explode(x, z, radius, enemyDamage, playerDamage, source, flags, 
   let touched = 0;
   // 1. robots
   if (enemyDamage > 0) {
+    const zf = flags | DMG_ZONE; // § E5.AJ : toute explosion est de zone
     const n = grid.queryCircle(x, z, radius, scratch, scratch.length);
     // un appel PAR ROBOT (souffle) : explode ne part que quelques fois par seconde et reste longtemps en code de base,
     // où chaque flottant de la boucle était emballé (≈ 600 o/image relevés en charge maximale, § Z nonies)
@@ -636,7 +672,7 @@ export function explode(x, z, radius, enemyDamage, playerDamage, source, flags, 
     for (let k = 0; k < n; k++) {
       const i = scratch[k];
       if (E.alive[i] === 0 || E.type[i] === spareType) continue; // spareType : type épargné (kamikazes entre eux)
-      touched += souffle(i, source, flags);
+      touched += souffle(i, source, zf);
     }
   }
   // 2. joueur : dans la zone, il prend tout
@@ -734,6 +770,8 @@ export function inspect(out) {
   out.fissures = fissures; // § E4.P : boucliers fissurés à mi-vie
   out.bossBlocks = bossBlocks; // coups arrêtés par les drones-boucliers du boss (§ E1.D)
   out.crits = crits;
+  out.zoneHits = ZONE_N[0]; // § E5.AJ : coups de zone portés
+  out.zoneResisted = ZONE_N[1]; // § E5.AJ : coups de zone réduits par la résistance
   out.dealtBySource = Array.from(dealtBySource);
   out.hitsBySource = Array.from(hitsBySource);
   out.killsBySource = Array.from(killsBySource); // § E3.H

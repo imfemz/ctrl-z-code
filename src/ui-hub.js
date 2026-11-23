@@ -1,6 +1,6 @@
 // PLAN ADDICTIF, ÉTAPE 4, CHANTIER B : le hub « Noyau » (ARCHITECTURE.md § E4.B) — ouvert depuis l'écran titre, quatre
-// onglets : Agents (les cartes de l'écran des agents, verrous compris), Collection (74 cases, « ? » tant que rien n'est
-// vu, fiche à droite), Succès (les 20, progression chiffrée), Déblocages (achats en Cycles, API du chantier A).
+// onglets : Agents (ouvre l'écran Agents : grille et fiches, src/ui.js et src/ui-agents-fiche.js), Collection (74 cases, « ? » tant que rien n'est
+// vu, fiche à droite), Succès (tous, progression chiffrée), Déblocages (achats en Cycles, API du chantier A).
 //
 // Règles : tout est du DOM, construit UNE fois par build() (à l'init de ui.js), rempli à l'ouverture et après chaque
 // action (fill) — jamais par image, jamais en combat (le hub ne s'ouvre que de l'écran titre). Aucun stockage, aucun
@@ -13,18 +13,21 @@ import {
   HUB, ITEMS, ITEM_KEYS, META, META_BUY, RARITIES, UTILITIES, WEAPONS, WEAPON_KEYS, ARSENALS,
   DEBLOCAGES, MONNAIE, PALIERS, SUCCES_UI, montant, TEXTES_N,
 } from './config.js';
+import { SKIN_UI } from './config.js'; // skins (tâche 5)
 import { SUCCES_RECOMPENSE } from './config.js'; // § E5.E.5 : boîte de la récompense d'un succès
 import { EVOLUTION_UI } from './config.js'; // § E5.W : « niv. max » de la recette
 import { CAUSE_COUNT, CAUSE_GROUPE, RETOURS_GUIDE } from './config.js'; // § E5.Q : morts par cause (fiche d'un robot)
 
 const T = HUB.textes;
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const TAB_AGENTS = 0;
-const TAB_COLLECTION = 1;
-const TAB_SUCCES = 2;
-const TAB_DEBLOCAGES = 3;
+// onglets relus par leur clé (HUB.onglets) : réordonner les onglets ne décale rien
+const ongletCle = (key) => HUB.onglets.findIndex((o) => o.key === key);
+const TAB_AGENTS = ongletCle('agents');
+const TAB_COLLECTION = ongletCle('collection');
+const TAB_SUCCES = ongletCle('succes');
+const TAB_DEBLOCAGES = ongletCle('deblocages');
 
-let D = null; // fabriques et modules passés par ui.js : { el, icon, pressable, hex, audio, actions, meta, defis, agentCard }
+let D = null; // fabriques et modules passés par ui.js : { el, icon, pressable, hex, audio, actions, meta, defis }
 let view = null; // dernière vue de main.js : { best, agent, cycles… }
 let rootNode = null;
 let fond = null; // couche 0 de la parallaxe
@@ -34,7 +37,6 @@ let soldeTotal = null;
 let soldeUnite = null; // § E4.N.1 : « PIXEL » / « PIXELS » (accord)
 let piedJouer = null;
 let piedJouerLabel = null;
-let piedAide = null; // aide de l'onglet Agents (au pied : les cartes tiennent sans défiler en 1280 × 720)
 let ficheBox = null;
 const fiche = {}; // nœuds de la fiche de la Collection
 const ongletBtns = [];
@@ -47,14 +49,11 @@ let tabIdx = 0;
 let zone = 'tabs'; // 'tabs' : ← / → changent d'onglet ; 'grid' : les flèches parcourent l'onglet
 const sel = new Int32Array(4); // case visée par onglet
 // § E5 noyau-selection (demande de Femz du 17/11 : « cliquer sur un item ; quand on survole d'autres items, ça reste sur l'item
-// sélectionné qu'on a cliqué ») : case FIXÉE par onglet (clic, ou Entrée au clavier), −1 = aucune. Onglets à détail
-// (Collection : fiche de droite ; Agents : fiche de l'agent et « Jouer · <agent> ») : le détail montre la case fixée ;
-// sans case fixée, il suit la case visée (survol, flèches) comme avant. Une case fixée est marquée (sr-fixe) ; le
-// survol ne déplace plus rien, les flèches déplacent la visée (sr-sel) sans toucher au détail. Remise à −1 à
-// chaque ouverture du Noyau. Succès et Déblocages n'ont pas de détail au survol : non concernés.
-// § E5.W (Femz, 21/11 : « auto sélectionne le dernier perso joué dans le noyau ») : à l'ouverture, l'onglet Agents a sa
-// carte FIXÉE sur l'agent choisi (celui du dernier passage, dont le modèle est chargé, § E5.K) — la fiche ne suit donc
-// jamais le survol vers un agent non chargé (son image pixel). Un clic sur un agent débloqué le choisit (hubAgent).
+// sélectionné qu'on a cliqué ») : case FIXÉE par onglet (clic, ou Entrée au clavier), −1 = aucune. Onglet à détail
+// (Collection : fiche de droite) : le détail montre la case fixée ; sans case fixée, il suit la case visée (survol,
+// flèches) comme avant. Une case fixée est marquée (sr-fixe) ; le survol ne déplace plus rien, les flèches déplacent la
+// visée (sr-sel) sans toucher au détail. Remise à −1 à chaque ouverture du Noyau. Succès et Déblocages n'ont pas de
+// détail au survol : non concernés. (L'onglet Agents ouvre l'écran Agents, tâche 5 : il n'a pas de cases ici.)
 const fixe = new Int32Array(4).fill(-1);
 /** Case dont l'onglet t montre le détail : la case fixée s'il y en a une, sinon la case visée. */
 function cible(t) {
@@ -62,15 +61,11 @@ function cible(t) {
 }
 let resetEtape = 0; // confirmations de « Réinitialiser la progression » (0 = repos)
 let flipRefus = false;
-const hubAgents = []; // cartes de l'onglet Agents (fabrique de ui.js)
 const succesRows = [];
 const venteCards = [];
 let resetBtn = null;
 const tmpProg = { valeur: 0, seuil: 0, fait: false, partie: false };
 const forSaleList = [];
-// § E4.L.1 : onglet Agents = sélecteur compact + LA fiche de la pause (nœud prêté par ui.js, D.ficheHub)
-let ficheHoteNode = null;
-let ficheMontree = -1; // a × 2 + verrou de la fiche montrée (−1 : à refaire)
 const agentVigs = []; // § E4.L.2 : { img, a } vignettes « agent » des récompenses (silhouette si verrouillé)
 
 function el(tag, cls, text) {
@@ -224,15 +219,30 @@ export function voie(key) {
   return '';
 }
 
-/** Condition d'un agent verrouillé, pour sa carte : { texte, prog } (écran des agents et onglet Agents). */
-export function agentCondition(a, best) {
+/**
+ * Condition d'un agent verrouillé : { texte, prog } (« Pour le débloquer : atteindre la vague 5 », « vague record 3 / 5 »).
+ * court : le texte du succès seul (« Atteindre la vague 5 ») — carte de la grille de l'écran Agents.
+ */
+export function agentCondition(a, best, court) {
   const s = succesPour('agent:' + AGENTS[a].key, DEFI_RECOMP.DEBLOQUE);
   if (s < 0) return { texte: '', prog: '' };
   const p = progressHub(s, best, {});
   const Dd = DEFIS.list[s];
   const unite = Dd.cond === DEFI_COND.VAGUE ? 'vague record ' : '';
   const suffixe = Dd.cond === DEFI_COND.KILLS_CUMUL ? ' robots' : '';
-  return { texte: T.pourDebloquer + Dd.texte.charAt(0).toLowerCase() + Dd.texte.slice(1), prog: unite + fmt(p.valeur) + ' / ' + fmt(p.seuil) + suffixe };
+  const texte = court ? Dd.texte : T.pourDebloquer + Dd.texte.charAt(0).toLowerCase() + Dd.texte.slice(1);
+  return { texte, prog: unite + fmt(p.valeur) + ' / ' + fmt(p.seuil) + suffixe };
+}
+
+/**
+ * Condition d'un skin verrouillé { texte, prog } : le texte de son succès, et « pas encore débloqué ». court : le texte du
+ * succès seul (« Détruire le boss de rang 2 avec le Shinobi ») — fiche de l'écran Agents (tâche 6).
+ */
+export function skinCondition(agentKey, skinKey, court) {
+  const s = succesPour('skin:' + agentKey + ':' + skinKey, DEFI_RECOMP.DEBLOQUE);
+  if (s < 0) return { texte: '', prog: '' };
+  const Dd = DEFIS.list[s];
+  return { texte: court ? Dd.texte : T.pourDebloquer + Dd.texte.charAt(0).toLowerCase() + Dd.texte.slice(1), prog: SKIN_UI.pasEncore };
 }
 
 function icone(id) {
@@ -302,7 +312,7 @@ export function build(deps) {
     contenus.push(c);
     zoneContenu.appendChild(c);
   }
-  buildAgents(contenus[TAB_AGENTS]);
+  // Écran Agents (tâche 5) : l'onglet Agents n'a plus de contenu ici — il ouvre l'écran Agents (tab, D.actions.agentsOuvrir)
   buildCollection(contenus[TAB_COLLECTION]);
   buildSucces(contenus[TAB_SUCCES]);
   buildDeblocages(contenus[TAB_DEBLOCAGES]);
@@ -315,9 +325,7 @@ export function build(deps) {
     D.audio.play(D.SFX.UI_CLICK);
     D.actions.quitHub();
   })); // menus « Pile » : sans touche affichée (Échap revient toujours)
-  piedAide = el('p', 'sr-lead sr-hub-aide', T.aideAgents);
-  pied.appendChild(piedAide);
-  piedJouer = D.button(T.jouer, 'sr-btn sr-primary', () => D.actions.hubPlay(agentFiche())); // § E4.L.1 : l'agent de la fiche
+  piedJouer = D.button(T.jouer, 'sr-btn sr-primary', () => D.actions.hubPlay()); // l'agent de départ (« Jouer · <agent> »)
   piedJouerLabel = piedJouer.querySelector('.sr-btn-label');
   pied.appendChild(piedJouer);
   panneau.appendChild(pied);
@@ -341,61 +349,8 @@ function addItem(t, node, r, extra) {
   return it;
 }
 
-function buildAgents(box) {
-  // § E4.L.1 : sélecteur compact (les cartes de B, réduites par le CSS), une carte par rangée ; à droite, l'hôte de la fiche
-  const page = el('div', 'sr-hub-agents-page');
-  const cartes = el('div', 'sr-agents sr-hub-agents');
-  for (let a = 0; a < AGENT_COUNT; a++) {
-    const c = D.agentCard(a, () => {
-      if (!D.actions.hubGuard()) return;
-      zone = 'grid';
-      fixe[TAB_AGENTS] = a; // § E5 noyau-selection : la carte cliquée (même verrouillée) garde la fiche
-      select(a, false);
-      confirmAgent(a, false);
-    });
-    hubAgents.push(c);
-    cartes.appendChild(c.card);
-    addItem(TAB_AGENTS, c.card, a, { kind: 'agent', idx: a, key: 'agent:' + AGENTS[a].key });
-  }
-  ficheHoteNode = el('div', 'sr-hub-fiche-hote');
-  page.append(cartes, ficheHoteNode);
-  box.append(page);
-}
-
-/** § E4.L.1 : hôte de la fiche dans l'onglet Agents (ui.placerFiche). */
-export function ficheHote() {
-  return ficheHoteNode;
-}
-
-/** Agent montré par la fiche : la carte fixée (§ E5 noyau-selection), sinon la carte visée du sélecteur. */
-function agentFiche() {
-  const a = cible(TAB_AGENTS);
-  return a >= 0 && a < AGENT_COUNT ? a : 0;
-}
-
 function agentVerrou(a) {
-  return a !== 0 && !D.meta.isUnlocked('agent', AGENTS[a].key);
-}
-
-/** La fiche (et son portrait) suit la carte visée ; rien si elle montre déjà cet agent. Fermée hors de l'onglet. */
-function majFicheAgents(force) {
-  if (!D.ficheHub) return;
-  if (tabIdx !== TAB_AGENTS) {
-    if (ficheMontree !== -2) D.ficheHub(-1, false, null);
-    ficheMontree = -2;
-    return;
-  }
-  const a = agentFiche();
-  const v = agentVerrou(a);
-  const cle = a * 2 + (v ? 1 : 0);
-  if (!force && cle === ficheMontree) return;
-  ficheMontree = cle;
-  D.ficheHub(a, v, v ? agentCondition(a, view ? view.best : 0) : null);
-  const A = AGENTS[a];
-  piedJouerLabel.textContent = T.jouer + ' · ' + A.name;
-  piedJouer.style.setProperty('--ac', D.hex(A.accent));
-  piedJouer.classList.toggle('sr-refuse', v);
-  piedJouer.setAttribute('aria-disabled', v ? 'true' : 'false');
+  return D.meta.agentVerrouille(a);
 }
 
 function caseNode(ic) {
@@ -445,8 +400,11 @@ function familleListe(fam) {
   const out = [];
   if (fam === 'arme') for (let w = 0; w < WEAPONS.length; w++) out.push({ kind: 'arme', key: 'arme:' + WEAPON_KEYS[w], idx: w, ic: icone('sr-w' + w) });
   else if (fam === 'evo') for (let e = 0; e < EVOLUTIONS.length; e++) out.push({ kind: 'evo', key: 'evo:' + EVOLUTIONS[e].key, idx: e, ic: icone('sr-e' + e) }); // 21/11 : icône de l'évolution
-  else if (fam === 'objet') for (let i = 0; i < ITEMS.length; i++) out.push({ kind: 'objet', key: 'objet:' + ITEM_KEYS[i], idx: i, ic: icone('sr-m-' + ITEM_KEYS[i]) });
-  else if (fam === 'fusion') for (let f = 0; f < FUSIONS.length; f++) out.push({ kind: 'fusion', key: 'fusion:' + FUSIONS[f].key, idx: f, ic: icone('sr-m-' + FUSIONS[f].key) });
+  //#region e5:AL-retrait-cryogel
+  // objet retiré (Cryogel) et fusion fermée (Orage glacé) : hors de la Collection (ni case, ni compte)
+  else if (fam === 'objet') for (let i = 0; i < ITEMS.length; i++) { if (ITEMS[i].retire !== true) out.push({ kind: 'objet', key: 'objet:' + ITEM_KEYS[i], idx: i, ic: icone('sr-m-' + ITEM_KEYS[i]) }); }
+  else if (fam === 'fusion') for (let f = 0; f < FUSIONS.length; f++) { if (FUSIONS[f].enabled !== false) out.push({ kind: 'fusion', key: 'fusion:' + FUSIONS[f].key, idx: f, ic: icone('sr-m-' + FUSIONS[f].key) }); }
+  //#endregion e5:AL-retrait-cryogel
   else if (fam === 'agent') for (let a = 0; a < AGENT_COUNT; a++) out.push({ kind: 'agent', key: 'agent:' + AGENTS[a].key, idx: a, ic: img(AGENT_SCREEN.portraits[a], 'sr-hub-portrait') });
   else if (fam === 'robot') for (let t = 0; t < ENEMY_COUNT; t++) out.push({ kind: 'robot', key: 'robot:' + t, idx: t, ic: img(HUB.robotPortraits + t + '.png', 'sr-hub-portrait sr-hub-robot') });
   return out;
@@ -504,12 +462,13 @@ function vignette(spec) {
   return icone(spec);
 }
 
-/** Vignette de la récompense d'un succès (clé 'agent:bastion', 'arme:rail', 'evo:…', 'fusion:…'). */
+/** Vignette de la récompense d'un succès (clé 'agent:bastion', 'skin:shinobi:ombre', 'arme:rail', 'evo:…', 'fusion:…'). */
 function rewardSpec(key) {
   const i = key.indexOf(':');
   const kind = key.slice(0, i);
   const k = key.slice(i + 1);
   if (kind === 'agent') return 'agent:' + k;
+  if (kind === 'skin') return 'agent:' + k.slice(0, k.indexOf(':')); // portrait de l'agent du skin
   if (kind === 'arme') return 'sr-w' + WEAPON_KEYS.indexOf(k);
   if (kind === 'objet') return 'sr-m-' + k;
   if (kind === 'util') return 'sr-u-' + k;
@@ -554,14 +513,22 @@ function recompenseBoite(key) {
 /**
  * Clic sur la boîte ou la case de la récompense du succès s (ou Entrée sur sa ligne) : l'onglet où vit la chose s'ouvre
  * et sa case est visée ET fixée (comme un clic, § E5 noyau-selection). Objet, arme, évolution, fusion → Collection, même
- * pas encore découverte (sa case « ? » et sa fiche d'inconnue) ; agent → Agents (sans changer l'agent de départ) ; mis en
+ * pas encore découverte (sa case « ? » et sa fiche d'inconnue) ; agent ou skin → la fiche de l'agent sur l'écran Agents
+ * (skin : ce skin visé ; « Retour » : la grille, puis le Noyau sur cet onglet) ; mis en
  * vente, ou bonus au sol → Déblocages (sa catégorie se déplie si elle était repliée). Rend true si la case est trouvée.
  */
 function allerRecompense(s) {
   const Dd = DEFIS.list[s];
   const key = Dd.reward;
   const kind = key.slice(0, key.indexOf(':'));
-  const t = kind === 'agent' ? TAB_AGENTS : Dd.sorte === DEFI_RECOMP.VENTE || kind === 'util' ? TAB_DEBLOCAGES : TAB_COLLECTION;
+  if (kind === 'agent' || kind === 'skin') {
+    const parts = key.split(':');
+    const a = AGENTS.findIndex((A) => A.key === parts[1]);
+    if (a < 0) return false;
+    D.audio.play(D.SFX.UI_OPEN);
+    return D.actions.agentsOuvrir('noyau', a, kind === 'skin' ? parts[2] : undefined);
+  }
+  const t = Dd.sorte === DEFI_RECOMP.VENTE || kind === 'util' ? TAB_DEBLOCAGES : TAB_COLLECTION;
   if (t === TAB_DEBLOCAGES) {
     const cat = cats.find((c) => c.cartes.some((n) => venteCards[n].key === key));
     if (cat && !cat.ouvert) {
@@ -578,9 +545,6 @@ function allerRecompense(s) {
   zone = 'grid';
   fixe[t] = k;
   select(k, true);
-  // § E5.W : un agent débloqué fixé devient l'agent choisi (comme un clic sur sa carte) — la fiche ne montre jamais un
-  // agent non chargé ; verrouillé : sa silhouette, l'agent choisi ne change pas
-  if (t === TAB_AGENTS && !agentVerrou(items[t][k].idx) && !(view && view.agent === items[t][k].idx)) confirmAgent(items[t][k].idx, false);
   return true;
 }
 
@@ -857,10 +821,8 @@ export function fill(v, fresh) {
     zone = 'tabs';
     resetEtape = 0;
     fixe.fill(-1); // § E5 noyau-selection : rien de fixé à l'ouverture…
-    ficheMontree = -1; // § E4.L.1 : de face à la réouverture
-    sel[TAB_AGENTS] = v.agent >= 0 && v.agent < AGENT_COUNT ? v.agent : 0; // l'onglet Agents s'ouvre sur l'agent de départ
-    fixe[TAB_AGENTS] = sel[TAB_AGENTS]; // … sauf l'agent choisi, fixé (§ E5.W)
-    tab(Number.isInteger(v.tab) ? v.tab : tabIdx, false);
+    // l'onglet Agents ouvre l'écran Agents : jamais l'onglet ouvert à l'ouverture du Noyau (Collection à sa place)
+    tab(Number.isInteger(v.tab) && v.tab !== TAB_AGENTS ? v.tab : tabIdx !== TAB_AGENTS ? tabIdx : TAB_COLLECTION, false);
   }
   const meta = D.meta;
   const solde = meta.getCycles();
@@ -870,12 +832,11 @@ export function fill(v, fresh) {
   // § E4.N.2 : « N gagnés depuis le début » seulement s'il dit autre chose que le solde (après un achat)
   const tot = cyclesTotal();
   soldeTotal.textContent = tot !== solde ? pluriel(tot, ['gagné depuis le début', T.gagnes]) : '';
-  fillAgents();
+  majJouer();
   fillCollection();
   fillSucces();
   fillDeblocages();
   paintSel();
-  majFicheAgents(true); // § E4.L.1 : verrous ou agent de départ ont pu changer
 }
 
 function cyclesTotal() {
@@ -883,13 +844,9 @@ function cyclesTotal() {
   return i.data.cyclesTotal | 0;
 }
 
-function fillAgents() {
-  const best = view ? view.best : 0;
-  for (let a = 0; a < hubAgents.length; a++) {
-    const locked = !D.meta.isUnlocked('agent', AGENTS[a].key) && a !== 0;
-    items[TAB_AGENTS][a].cls = D.paintAgentCard(hubAgents[a], a, locked, !!view && view.agent === a, locked ? agentCondition(a, best) : null);
-  }
-  const A = AGENTS[agentFiche()]; // § E4.L.1 : « Jouer · <agent de la fiche> »
+/** « Jouer · <agent de départ> » au pied du Noyau. */
+function majJouer() {
+  const A = AGENTS[view && view.agent >= 0 && view.agent < AGENT_COUNT ? view.agent : 0];
   piedJouerLabel.textContent = T.jouer + ' · ' + A.name;
   const k = piedJouer.querySelector('.sr-key');
   if (k) k.style.display = 'none';
@@ -1099,6 +1056,15 @@ function fillSucces() {
     tot++;
     if (inf.revealed.indexOf(DEFIS.list[s].reward) >= 0) obt++;
   }
+  // skins : récompenses `skin:` des succès (hors META.verrous, hors recettes), une seule fois chacune
+  const skinsVus = {};
+  for (let s = 0; s < DEFI_COUNT; s++) {
+    const r = DEFIS.list[s].reward;
+    if (r.indexOf('skin:') !== 0 || skinsVus[r]) continue;
+    skinsVus[r] = 1;
+    tot++;
+    if (inf.unlocked.indexOf(r) >= 0) obt++;
+  }
   synth.recomp.textContent = obt + ' / ' + tot;
   setMontant(synth.gagnes, st.cyclesSucces | 0);
   synth.temps.textContent = duree(st.tempsJeu | 0);
@@ -1182,9 +1148,7 @@ function paintSel() {
   }
   // fiche : Collection seulement
   ficheBox.style.display = tabIdx === TAB_COLLECTION ? '' : 'none';
-  piedAide.style.visibility = tabIdx === TAB_AGENTS ? 'visible' : 'hidden';
   if (tabIdx === TAB_COLLECTION) fillFiche(items[TAB_COLLECTION][cible(TAB_COLLECTION)]); // § E5 noyau-selection
-  if (view) majFicheAgents(false); // § E4.L.1
 }
 
 // ----- Navigation (main.js) ---------------------------------------------------------------------------------------------
@@ -1192,6 +1156,12 @@ function paintSel() {
 /** Onglet t (0 à 3). sound : clic joué (changement voulu par le joueur). Rend l'onglet ouvert. */
 export function tab(t, sound) {
   if (!(t >= 0 && t < 4)) return tabIdx;
+  // Écran Agents (tâche 5) : l'onglet Agents ouvre l'écran Agents (état AGENT, origine 'noyau') ; l'onglet ouvert ne
+  // change pas — « Retour » y ramène. Ouverture du Noyau (sound faux) : jamais ici (fill passe à la Collection).
+  if (t === TAB_AGENTS) {
+    if (sound && D.actions.hubGuard()) D.actions.agentsOuvrir('noyau');
+    return tabIdx;
+  }
   const change = t !== tabIdx;
   tabIdx = t;
   for (let k = 0; k < 4; k++) {
@@ -1200,7 +1170,6 @@ export function tab(t, sound) {
   }
   if (sound && change) D.audio.play(D.SFX.UI_CLICK);
   resetEtape = 0;
-  if (change && t === TAB_AGENTS) ficheMontree = -1; // § E4.L.1 : de face à la réouverture de l'onglet
   if (view) {
     fillDeblocages();
     paintSel();
@@ -1262,11 +1231,10 @@ export function confirm() {
   if (zone === 'tabs') return move(0, 1);
   const it = items[tabIdx][sel[tabIdx]];
   // § E5 noyau-selection : Entrée = clic — la case visée devient la case fixée (Agents, Collection)
-  if (tabIdx === TAB_AGENTS || tabIdx === TAB_COLLECTION) {
+  if (tabIdx === TAB_COLLECTION) {
     fixe[tabIdx] = sel[tabIdx];
     paintSel();
   }
-  if (tabIdx === TAB_AGENTS) return confirmAgent(it.idx, true);
   if (tabIdx === TAB_DEBLOCAGES) {
     if (it.kind === 'cat') return basculer(cats.find((c) => c.key === it.key));
     return it.kind === 'reset' ? reinitialiser() : acheter(it.idx);
@@ -1275,12 +1243,6 @@ export function confirm() {
   if (tabIdx === TAB_SUCCES && it.kind === 'succes') return allerRecompense(it.idx); // § E5.E.5 : Entrée = clic sur la récompense
   if (tabIdx === TAB_COLLECTION) D.audio.play(D.SFX.UI_OPEN);
   return true;
-}
-
-/** Agent a choisi dans l'onglet Agents ; clavier sur l'agent déjà choisi : la partie démarre. */
-function confirmAgent(a, clavier) {
-  if (clavier && view && view.agent === a) return D.actions.hubPlay();
-  return D.actions.hubAgent(a);
 }
 
 function acheter(n) {
@@ -1306,6 +1268,11 @@ function reinitialiser() {
   return D.actions.hubReset();
 }
 
+/** Onglet ouvert (jamais Agents : il ouvre l'écran Agents). */
+export function onglet() {
+  return tabIdx;
+}
+
 /** Couches de la parallaxe : fond, panneau, contenu de l'onglet ouvert. */
 export function layers() {
   return [fond, panneau, contenus[tabIdx]];
@@ -1325,7 +1292,6 @@ export function inspect(out = {}) {
   out.verrous = items[TAB_COLLECTION].filter((i) => i.verrou).map((i) => i.key);
   out.reveles = items[TAB_COLLECTION].filter((i) => i.revele).map((i) => i.key);
   out.resetEtape = resetEtape;
-  out.agentFiche = agentFiche(); // § E4.L.1
   out.jouer = piedJouerLabel ? piedJouerLabel.textContent : '';
   out.ficheNom = fiche.nom ? fiche.nom.textContent : '';
   out.ficheVoie = fiche.voie ? fiche.voie.textContent : '';

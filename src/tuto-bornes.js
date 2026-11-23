@@ -65,7 +65,7 @@ export function init(ctx) {
   canvas = document.createElement('canvas');
   canvas.width = W * ART;
   canvas.height = H * ART;
-  dessiner(canvas.getContext('2d'));
+  dessinerFleche(canvas.getContext('2d'), TUTO_BORNES.couleurs, TUTO_BORNES.halo);
   tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.magFilter = THREE.LinearFilter;
@@ -85,16 +85,21 @@ export function init(ctx) {
   cacher();
 }
 
-/** Triangle pointe en bas, liseré, reflet, halo en paliers (hors combat, une fois). */
-function dessiner(g) {
-  const K = TUTO_BORNES.couleurs;
+/** Taille de l'image de la flèche (pixels d'art) et pixels du canvas par pixel d'art — § E5.AK : même flèche, en rouge. */
+export const FLECHE = Object.freeze({ W, H, ART, HALO });
+
+/**
+ * Triangle pointe en bas, liseré, reflet, halo en paliers (hors combat, une fois). K = couleurs { trait, corps, ombre,
+ * clair, halo }, haloOp = opacité des paliers (§ E5.AK : la flèche rouge du coup mortel prend la même recette).
+ */
+export function dessinerFleche(g, K, haloOp) {
   g.clearRect(0, 0, W * ART, H * ART);
   // rangée r du triangle (0 = haut) : de x0 à x1 inclus, dans la grille du triangle
   const x0 = (r) => r;
   const x1 = (r) => TRI_W - 1 - r;
   // halo : chaque palier est le triangle grossi de k pixels d'art (du plus large au plus serré), opacité décroissante
   for (let k = HALO; k >= 1; k--) {
-    g.fillStyle = 'rgba(' + K.halo + ', ' + TUTO_BORNES.halo[k - 1] + ')';
+    g.fillStyle = 'rgba(' + K.halo + ', ' + haloOp[k - 1] + ')';
     for (let r = -k; r < TRI_H + k; r++) {
       const rr = r < 0 ? 0 : r >= TRI_H ? TRI_H - 1 : r;
       const a = x0(rr) - k;

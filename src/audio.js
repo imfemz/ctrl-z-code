@@ -907,6 +907,9 @@ RECIPES[SFX.CLIC_DEPLACEMENT] = transposee(RECIPES[SFX.HIT], 9);
 RECIPES[SFX.ESSAIM] = transposee(RECIPES[SFX.PLAYER_DASH], -10);
 RECIPES[SFX.ECLAT_PROJECTION] = transposee(RECIPES[SFX.SHIELD_BLOCK], 5); // objet Éclats : verre touché par des balles
 RECIPES[SFX.ECLAT_IMPACT] = transposee(RECIPES[SFX.HIT], -15); // objet Éclats : coup sourd métallique, grave
+//#region e5:AH-virus-gaz
+RECIPES[SFX.VIRUS_INFECTION] = transposee(RECIPES[SFX.PLAYER_DASH], -7); // § E5.AH : repli du jet d'air (le souffle du dash, plus grave)
+//#endregion e5:AH-virus-gaz
 RECIPES[SFX.SOIN_HEROS] = transposee(RECIPES[SFX.FRAGMENT], 7); // accent « bonus » de jeu vidéo : le fragment, plus aigu (BONUS_PICK + 9 était le jumeau du repli d'ITEM_GET)
 
 for (let i = 0; i < N; i++) if (RECIPES[i] === null) RECIPES[i] = RECIPES[SFX.UI_CLICK]; // socle E2 : repli d'un son dont la recette n'est pas encore écrite
@@ -1651,6 +1654,7 @@ export function inspect(out) {
   out.droppedBy = { interval: droppedInterval, distance: droppedDistance, voices: droppedVoices, pool: droppedPool, error: startErrors, sequence: droppedSequence, loading: droppedLoading };
   out.gemStep = gemNext;
   out.voicesByPriority = Array.from(activeByPriority);
+  out.activeById = Array.from(activeById); // § E5.AH (region e5:AH-virus-gaz) : voix en cours de chaque son (plafond maxVoices)
   out.contexts = contexts;
   out.state = ac !== null ? ac.state : failed ? 'failed' : 'none';
   out.sampleRate = ac !== null ? ac.sampleRate : 0;

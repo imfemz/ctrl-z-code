@@ -53,6 +53,7 @@ import { AGENT, ANIM_AGENTS } from '../config.js'; // § E5.F : course du Bastio
 import { ANIM } from './reglages.js';
 import * as cape from './cape.js';
 import * as tissus from './tissus.js'; // § E5.I : les trois tissus du Shinobi (à la place de la cape)
+import { surfaceDos, profilBras, profilJambe, rayonsJambes, axeKatana } from './dos-reel.js'; // skins, tâche 2 : cape et tissus posés sur le dos réel du modèle, bras réels
 import { katanaEnMain } from './combos.js'; // § E5.I : katana au dos ou en main, état de l'image
 import { hauteur as dashHauteur } from '../dash-agents.js';
 import { DASH as DASH_AG } from '../dash-agents.js'; // § E5.F : durée du bond (Jump Attack étiré dessus)
@@ -63,6 +64,9 @@ import { IDLES_AGENTS } from '../config.js'; // § E5.F : idle de chaque agent
 import { COURSE } from './ref-marche.js';
 import { RETOURS_GUIDE } from '../config.js'; // § E5.Q (B14) : lueur verte du soin du héros
 import { SOIN_HEROS } from '../state.js';
+//#region e5:AF-course-shinobi
+import { COURSE_SHINOBI, AGENTS } from '../config.js'; // § E5.AF : course « ninja » du Shinobi en course avant
+//#endregion e5:AF-course-shinobi
 const S_LUEUR = 2; // SOIN_HEROS[2] : s de lueur verte restantes (src/soin-heros.js)
 
 const A = ANIM.heros;
@@ -147,6 +151,23 @@ const PAS_VU = new Float64Array(1); // dernier pas de fente demandé par combos 
 const RECT = new Float64Array(6); // pas de fente : [k*3] 1 = cible fixe, [k*3+1] x, [k*3+2] z
 const RECD = new Float64Array(2); // durée du pas en cours, par pied (0 = recentrage ordinaire)
 const REPLIE = Float64Array.from(ANIM_AGENTS.shinobi.replie);
+//#region e5:AF-course-shinobi
+// § E5.AF : course « ninja » du Shinobi. NJ_ON[0] = 1 quand l'agent posé est le Shinobi (init) ; NJ : [0] rampe linéaire
+// du poids, [1] cible (0 / 1), [2] poids w (smoothstep de la rampe), [3] poids du haut du corps wH = w × (1 − geste),
+// [4] penché ninja ajouté (corps + buste, rad : compensé par la visée et la bouche des armes de bras), [5] σ (échelle du
+// trajet d'appui, init), [6] et [7] libres.
+// wH suit sa cible w × (1 − geste) en rampe de AF.fonduS s (un geste prend les bras d'un coup, mais le buste et la tête
+// quittent la course ninja en 0,2 s : pas de saut de 30° du buste à la 1re image d'un coup).
+const AF = COURSE_SHINOBI;
+// réglages flottants recopiés dans un tableau typé (§ V : lus à chaque image sans emballage)
+const AFK = Float64Array.from([AF.penche, AF.leanRacine, AF.teteMonde, AF.brasMonde, AF.brasEcart, AF.avantBras, AF.vitesseMin, AF.fonduS, AF.plafondVitesse, AF.teteMin]);
+const K_PEN = 0, K_LEAN = 1, K_TETE = 2, K_BRAS = 3, K_ECART = 4, K_AVB = 5, K_VMIN = 6, K_FON = 7, K_PLAF = 8, K_TMIN = 9;
+const NJ_ON = new Uint8Array(1);
+export const courseNinja = new Float64Array(8);
+const NJ = courseNinja;
+/** § E5.AF.6 : pose ninja traduite dans les 13 valeurs d'un geste (combos.departF : un geste part de la pose ninja). */
+export const NJ13 = new Float64Array(13);
+//#endregion e5:AF-course-shinobi
 const BXZ = new Float64Array(1); // penché du buste d'avant le § E5.F (pivot au sol)
 const TORS_EX = new Float64Array(1); // § E5.F : excès de torsion du buste reporté au bassin (rad)
 const eB1 = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -248,6 +269,11 @@ export function init({ scene, donnees, materiau, avecCape = true, avecTissus = f
   if (mesh !== null) liberer();
   // § E5.F : course « bulldozer » du Bastion (run.agent est l'agent posé : player.poserAgent(run.agent))
   STY.fill(0);
+  //#region e5:AF-course-shinobi
+  NJ_ON[0] = AF.actif && ANIM_AGENTS.actif && agent === AGENT.SHINOBI ? 1 : 0;
+  NJ.fill(0);
+  NJ13.fill(0);
+  //#endregion e5:AF-course-shinobi
   // § E5.K : `agent` = l'agent du modèle posé (il peut précéder run.agent à l'écran titre, avant son chargement)
   if (ANIM_AGENTS.actif && agent === AGENT.BASTION) {
     const B = ANIM_AGENTS.bastion.course;
@@ -412,7 +438,10 @@ export function init({ scene, donnees, materiau, avecCape = true, avecTissus = f
   // la capsule fixe des jambes est remplacée par deux capsules qui suivent les cuisses et les tibias (marche arrière,
   // pas chassés : le buste tourne, les jambes non)
   // agent sans cape (le Bastion, AGENTS[].cape === false) : rien n'est créé, ou la cape déjà créée est coupée
-  if (avecCape) cape.init({ scene, ancrageG: vg, ancrageD: vd, dos, jambes: { a: [0, 0.6, 0], b: [0, 0.61, 0], rayon: 0 }, corps: donnees });
+  const surface = surfaceDos(geometry, pieces); // dos réel (null sans pièce corps : plan et capsule d'avant)
+  // bras réels : rayon des bras le long de leur capsule, lu sur le maillage (même axe que bras() ci-dessous)
+  const pb = [profilBras(geometry, pieces, 'bras_g', 'avant_bras_g', MAIN_LOCAL), profilBras(geometry, pieces, 'bras_d', 'avant_bras_d', MAIN_LOCAL)];
+  if (avecCape) cape.init({ scene, ancrageG: vg, ancrageD: vd, dos, jambes: { a: [0, 0.6, 0], b: [0, 0.61, 0], rayon: 0 }, surface, bras: pb, jambesReelles: [profilJambe(geometry, pieces, 'g', A.pied.capeLocal), profilJambe(geometry, pieces, 'd', A.pied.capeLocal)] });
   else cape.couper();
   // § E5.I : le Shinobi (AGENTS[].tissus) porte ses trois tissus — pan devant, pan du dos, queue de l'écharpe
   {
@@ -420,7 +449,8 @@ export function init({ scene, donnees, materiau, avecCape = true, avecTissus = f
     for (let i = 0; i < 3; i++) TIS_PIV[i] = pc ? pc.pivot[i] : 0;
   }
   S_TIS[0] = avecTissus ? 1 : 0;
-  if (avecTissus) tissus.init({ scene, dos, corps: donnees });
+  // tissus : jambes LIBRES dans la surface (leurs capsules suivent la pose ; revue du 22/11)
+  if (avecTissus) tissus.init({ scene, dos, surface: surfaceDos(geometry, pieces, 'libres'), jambes: rayonsJambes(geometry, pieces, A.pied.capeLocal), katana: axeKatana(geometry, pieces), devant: surfaceDos(geometry, pieces, 'libres', 'devant') });
   else tissus.couper();
   reset();
   S[READY] = 1;
@@ -469,6 +499,7 @@ export function reset() {
   THETA.fill(0);
   TAU.fill(0);
   DB[0] = 0;
+  NJ[0] = NJ[1] = NJ[2] = NJ[3] = NJ[4] = NJ[6] = NJ[7] = 0; // § E5.AF : course ninja repartie de 0 (σ gardé)
   if (mesh) {
     pose();
     bras(0, bones.bras_g, bones.avant_bras_g);
@@ -536,6 +567,12 @@ export function update(dt) {
   else if (loco === 1 && at > C.seuils[1] + hy) loco = 2;
   else if (loco === 2 && at < C.seuils[1] - hy) loco = at < C.seuils[0] - hy ? 0 : 1;
   S[LOCO] = loco;
+  //#region e5:AF-course-shinobi
+  if (NJ_ON[0] === 1) {
+    NJ_T[0] = dt;
+    majNinja(); // § E5.AF.5 : à part (une fonction plus longue, update se faisait désoptimiser sans cesse : 600 Ko / 5 s)
+  }
+  //#endregion e5:AF-course-shinobi
   let bas = S[LOWYAW];
   if (dashing) bas = cible;
   else if (loco === 0) bas = moveYaw;
@@ -586,8 +623,12 @@ export function update(dt) {
   const cad = 1 + PF[F_CG] * urg;
   if (C.courseRef && JB[5] === 1 && S[PIVOT] !== 1) {
     // course de référence : un cycle par CR_DCYC mètres, recalé sur le pied d'appui (voir poseCourse)
-    const base = ((v < speed * 1.15 ? v : speed * 1.15) * dt * TWO_PI) / CR_DCYC[0];
-    const corr = ((-CR_ECART[0] * TWO_PI) / CR_DCYC[0]) * (dt < C.calagePhase ? dt / C.calagePhase : K[1]);
+    // § E5.AF.3 : longueur du cycle et plafond de cadence mêlés à ceux de la course ninja par son poids (w = 0 : d'avant)
+    // (garde réelle : hors Shinobi, les expressions d'avant telles quelles)
+    const dcy = NJ_ON[0] === 1 ? CR_DCYC[0] + (NJ_DC[0] - CR_DCYC[0]) * NJ[2] : CR_DCYC[0];
+    const vcap = NJ_ON[0] === 1 ? speed * (1.15 + (AFK[K_PLAF] - 1.15) * NJ[2]) : speed * 1.15;
+    const base = ((v < vcap ? v : vcap) * dt * TWO_PI) / dcy;
+    const corr = ((-CR_ECART[0] * TWO_PI) / dcy) * (dt < C.calagePhase ? dt / C.calagePhase : K[1]);
     S[PHASE] += (base + corr > 0 ? base + corr : K[0]) * cad;
   } else if (loco === 3) S[PHASE] += (tourne < 0 ? -tourne : tourne) * 2.2 * cad; // petits pas du pivot
   else S[PHASE] += (v < speed * 1.15 ? v : speed * 1.15) * dt * foulee * cad;
@@ -601,7 +642,7 @@ export function update(dt) {
   if (af > 1) af = K[1];
   else if (af < -1) af = K[2];
   S[ACCF] += (af - S[ACCF]) * (1 - Math.exp(-15 * dt));
-  const lean = dashing ? A.dashLean : (A.leanSpeed + STY[ST_LEAN]) * S[GAIT] + A.leanAccel * S[ACCF]; // § E5.F : + Bastion
+  const lean = dashing ? A.dashLean : NJ_ON[0] === 1 ? (A.leanSpeed + STY[ST_LEAN] + AFK[K_LEAN] * NJ[2]) * S[GAIT] + A.leanAccel * S[ACCF] : (A.leanSpeed + STY[ST_LEAN]) * S[GAIT] + A.leanAccel * S[ACCF]; // § E5.F : + Bastion ; § E5.AF : + course ninja (Shinobi seulement)
   S[LEAN] += (lean - S[LEAN]) * (1 - Math.exp(-A.leanRate * dt));
   // roulis : vitesse de rotation du cap
   let d = P.rot - S[LASTROT];
@@ -1572,6 +1613,25 @@ const CR_M = 96;
 const CR_HC = new Float64Array(CR_M);
 const CR_ARR = new Uint8Array(1); // course jouée à l'envers à l'image précédente
 const CR_ON = new Uint8Array(1); // course de référence active à cette image (piedPose : pas d'approche du pied)
+//#region e5:AF-course-shinobi
+// § E5.AF.2 : 2e table (course ninja du Shinobi, COURSE_SHINOBI.ref, mesurée image par image), lue avec la 1re et mêlée
+// par CR_W[0] (= poids w ; 0 : la 1re table seule, chemin d'avant). Brutes (rad) puis mises à l'échelle σ à l'init.
+const NJ_N = AF.ref.n;
+const NJ_C0 = Float64Array.from(AF.ref.cuisse, (v) => v * DEG);
+const NJ_G0 = Float64Array.from(AF.ref.genou, (v) => v * DEG);
+const NJ_C = Float64Array.from(NJ_C0);
+const NJ_G = Float64Array.from(NJ_G0);
+const NJ_P = Float64Array.from(AF.ref.pied, (v) => v * DEG);
+const NJ_O = Float64Array.from(AF.ref.orteils, (v) => v * DEG);
+const NJ_B = Float64Array.from(AF.ref.bassin);
+const NJ_E = Float64Array.from(AF.echelleAppui);
+const NJ_HC = new Float64Array(CR_M); // hauteur de hanche sur le cycle (comme CR_HC)
+const NJ_DC = new Float64Array([2.5]); // m par cycle (comme CR_DCYC)
+const NJ_H0 = new Float64Array(2); // [0] hanche moyenne en course ninja
+const NJ_MID = new Float64Array(1); // milieu du balancier des cuisses (comme CR_MID)
+const CR_W = new Float64Array(1); // poids de lecture de la table ninja
+for (let i = 0; i < NJ_N; i++) if (i / NJ_N < CR_AP && NJ_P[i] > AF.piedAppuiMax) NJ_P[i] = AF.piedAppuiMax; // semelle bornée à l'appui
+//#endregion e5:AF-course-shinobi
 
 /** Pose de la réf à la position CR_IN[0] ∈ [0, 1) du cycle (interpolation linéaire, cycle bouclé) → CRP. */
 function lireCourse() {
@@ -1585,6 +1645,20 @@ function lireCourse() {
   CRP[2] = CR_P[i] + (CR_P[j] - CR_P[i]) * f;
   CRP[3] = CR_O[i] + (CR_O[j] - CR_O[i]) * f;
   CRP[4] = CR_B[i] + (CR_B[j] - CR_B[i]) * f;
+  //#region e5:AF-course-shinobi
+  // § E5.AF.2 : table ninja à la même position du cycle, mêlée par CR_W[0] (sans branche : w = 0 rend la 1re au bit près)
+  if (!(CR_W[0] > 0)) return; // hors course ninja : la 1re table telle quelle
+  const xn = (w - Math.floor(w)) * NJ_N;
+  const a = Math.floor(xn) % NJ_N;
+  const b = (a + 1) % NJ_N;
+  const fn = xn - Math.floor(xn);
+  const q = CR_W[0];
+  CRP[0] += (NJ_C[a] + (NJ_C[b] - NJ_C[a]) * fn - CRP[0]) * q;
+  CRP[1] += (NJ_G[a] + (NJ_G[b] - NJ_G[a]) * fn - CRP[1]) * q;
+  CRP[2] += (NJ_P[a] + (NJ_P[b] - NJ_P[a]) * fn - CRP[2]) * q;
+  CRP[3] += (NJ_O[a] + (NJ_O[b] - NJ_O[a]) * fn - CRP[3]) * q;
+  CRP[4] += (NJ_B[a] + (NJ_B[b] - NJ_B[a]) * fn - CRP[4]) * q;
+  //#endregion e5:AF-course-shinobi
 }
 
 /** Hauteur de la cheville au-dessus du sol pour un pied d'appui d'angle th (talon, à plat ou base des orteils au sol). */
@@ -1598,6 +1672,65 @@ function chevilleAppui(th) {
 
 /** Init (après mesurerJambes) : hauteur moyenne de la hanche en course et longueur du cycle, sur les jambes du modèle. */
 function calerCourse() {
+  CR_W[0] = 0;
+  calerTable(CR_H, CR_HC, CR_DCYC);
+  //#region e5:AF-course-shinobi
+  if (NJ_ON[0] === 1) calerNinja();
+  else {
+    NJ_DC[0] = CR_DCYC[0];
+    NJ_HC.set(CR_HC);
+  }
+  CR_W[0] = 0;
+  //#endregion e5:AF-course-shinobi
+}
+
+//#region e5:AF-course-shinobi
+/**
+ * § E5.AF.3 : à la vitesse nominale du Shinobi, un cycle de la course ninja dure AF.cycleS. Le trajet avant / arrière de
+ * la cheville sous la hanche des poses d'appui (AF.echelleAppui) est mis à l'échelle σ, hauteur gardée, puis cuisse et
+ * genou sont recalculés par cinématique inverse (genou devant) ; σ par point fixe jusqu'à la longueur de cycle voulue.
+ */
+function calerNinja() {
+  const a = JB[0];
+  const b = JB[1];
+  const ag = AGENTS[AGENT.SHINOBI];
+  const vise = PLAYER.speed * (ag && ag.stats ? ag.stats.speedMul : 1) * AF.cycleS;
+  let sig = 1;
+  for (let it = 0; it < 8; it++) {
+    for (let i = 0; i < NJ_N; i++) {
+      const sc = 1 + (sig - 1) * NJ_E[i];
+      const th = NJ_C0[i];
+      const kn = NJ_G0[i];
+      const x = (a * Math.sin(th) + b * Math.sin(th - kn)) * sc;
+      const y = a * Math.cos(th) + b * Math.cos(th - kn);
+      let d = Math.sqrt(x * x + y * y);
+      const dmax = (a + b) * 0.9999;
+      const dmin = Math.abs(a - b) + 1e-4;
+      d = d > dmax ? dmax : d < dmin ? dmin : d;
+      const cg = (a * a + b * b - d * d) / (2 * a * b);
+      const ch = (a * a + d * d - b * b) / (2 * a * d);
+      NJ_G[i] = Math.PI - Math.acos(cg > 1 ? 1 : cg < -1 ? -1 : cg);
+      NJ_C[i] = Math.atan2(x, y) + Math.acos(ch > 1 ? 1 : ch < -1 ? -1 : ch);
+    }
+    CR_W[0] = 1;
+    calerTable(NJ_H0, NJ_HC, NJ_DC);
+    const r = vise / NJ_DC[0];
+    if (Math.abs(r - 1) < 1e-4) break;
+    sig *= r;
+  }
+  NJ[5] = sig;
+  let mx = -1e9;
+  let mn = 1e9;
+  for (let i = 0; i < NJ_N; i++) {
+    if (NJ_C[i] > mx) mx = NJ_C[i];
+    if (NJ_C[i] < mn) mn = NJ_C[i];
+  }
+  NJ_MID[0] = (mx + mn) / 2;
+}
+//#endregion e5:AF-course-shinobi
+
+/** Hauteur de hanche sur le cycle (HC), longueur du cycle (DC[0]) et hanche moyenne (H0[0]) de la table lue (CR_W). */
+function calerTable(H0, HC, DC) {
   const a = JB[0];
   const b = JB[1];
   CR_H[1] = JB[4] + a * Math.cos(JB[2]) + b * Math.cos(JB[3]);
@@ -1609,7 +1742,7 @@ function calerCourse() {
     h += chevilleAppui(CRP[2]) + a * Math.cos(CRP[0]) + b * Math.cos(CRP[0] - CRP[1]) - CRP[4] * (a + b);
     m++;
   }
-  CR_H[0] = h / m;
+  H0[0] = h / m;
   // hanche voulue sur le cycle : appui de la jambe g [0, ap), de la jambe d [0,5, 0,5 + ap) ; vol : bassin + correction
   // interpolée entre la fin d'un appui et le début du suivant
   const hipAppui = (w) => {
@@ -1620,22 +1753,22 @@ function calerCourse() {
   const hipBassin = (w) => {
     CR_IN[0] = w;
     lireCourse();
-    return CR_H[0] + CRP[4] * (a + b);
+    return H0[0] + CRP[4] * (a + b);
   };
   const cFin = hipAppui(CR_AP) - hipBassin(CR_AP); // fin d'appui g (et d, décalée d'un demi-cycle)
   const cDeb = hipAppui(0) - hipBassin(0.5); // début d'appui d à 0,5 (même pose que g à 0)
   const cDeb0 = hipAppui(0) - hipBassin(0);
   for (let i = 0; i < CR_M; i++) {
     const w = i / CR_M;
-    if (w < CR_AP) CR_HC[i] = hipAppui(w);
-    else if (w >= 0.5 && w < 0.5 + CR_AP) CR_HC[i] = hipAppui(w - 0.5);
+    if (w < CR_AP) HC[i] = hipAppui(w);
+    else if (w >= 0.5 && w < 0.5 + CR_AP) HC[i] = hipAppui(w - 0.5);
     else {
       const debut = w < 0.5 ? CR_AP : 0.5 + CR_AP;
       const fin = w < 0.5 ? 0.5 : 1;
       const f = (w - debut) / (fin - debut);
       const c0 = w < 0.5 ? cFin : hipAppui(CR_AP) - hipBassin(0.5 + CR_AP);
       const c1 = w < 0.5 ? cDeb : cDeb0;
-      CR_HC[i] = hipBassin(w) + c0 + (c1 - c0) * f;
+      HC[i] = hipBassin(w) + c0 + (c1 - c0) * f;
     }
   }
   // pendant l'appui, le corps avance de ce que la cheville recule sous la hanche + ce qu'elle avance quand le pied roule
@@ -1649,7 +1782,7 @@ function calerCourse() {
   const p = CRP[2] > 0 ? CRP[2] : 0;
   const roule = JB[6] * (1 - Math.cos(p)) + (JB[4] - JB[7]) * Math.sin(p);
   const d = x0 - x1 + roule;
-  CR_DCYC[0] = d > 0.2 ? d / CR_AP : 2.5;
+  DC[0] = d > 0.2 ? d / CR_AP : 2.5;
 }
 
 /** Angles des jambes (angX, angZ), pieds (THETA, TAU) et sorties CR_L ; entrées dans CR_IN[1..8] : position u du
@@ -1683,7 +1816,7 @@ function poseCourse() {
     // la cuisse de la réf penche en moyenne de CR_MID vers l'avant (le genou monte DEVANT) : ce biais reste dans l'axe
     // du corps, seule l'oscillation osc suit la direction du pas α — en chassés, appliqué de côté, il poussait les deux
     // jambes du même côté et elles se croisaient. Avant / arrière : identique (tx = th).
-    const biais = CR_MID * g * (sc < 1 ? sc : K[1]);
+    const biais = (CR_W[0] > 0 ? CR_MID + (NJ_MID[0] - CR_MID) * CR_W[0] : CR_MID) * g * (sc < 1 ? sc : K[1]); // § E5.AF : biais mêlé
     const osc = thm - (arr ? -biais : biais);
     const tx = osc * ca + biais; // cuisse dans l'axe du corps (+ = en avant)
     const tz = osc * sa; // cuisse sur le côté
@@ -1708,7 +1841,12 @@ function poseCourse() {
   const x = w0 * CR_M;
   const i = Math.floor(x) % CR_M;
   const f = x - Math.floor(x);
-  CR_L[2] = (CR_HC[i] + (CR_HC[(i + 1) % CR_M] - CR_HC[i]) * f - CR_H[1]) * g;
+  if (CR_W[0] > 0) {
+    const i1 = (i + 1) % CR_M;
+    const hA = CR_HC[i] + (CR_HC[i1] - CR_HC[i]) * f;
+    const hB = NJ_HC[i] + (NJ_HC[i1] - NJ_HC[i]) * f; // § E5.AF : hanche de la course ninja, mêlée par son poids
+    CR_L[2] = (hA + (hB - hA) * CR_W[0] - CR_H[1]) * g;
+  } else CR_L[2] = (CR_HC[i] + (CR_HC[(i + 1) % CR_M] - CR_HC[i]) * f - CR_H[1]) * g;
 }
 
 /** Après piedPose : écart (m) entre la cheville d'appui clouée et celle de la pose de réf, le long du déplacement. */
@@ -1730,6 +1868,88 @@ function ecartCourse() {
   }
   CR_ECART[0] = m > 0 ? e / m : K[0];
 }
+
+//#region e5:AF-course-shinobi
+/**
+ * § E5.AF : après les bornes articulaires — si un pied passe sous le sol (un genou d'appui borné à 155° ne rejoint plus
+ * son ancre ; fondu à l'arrêt : anim-pieds, arrêt, 9,8 mm), le corps est relevé d'autant (même règle que le bond du Bastion).
+ */
+function solNinja() {
+  if (JB[5] !== 1) return;
+  mesh.updateMatrixWorld(true);
+  basPied(0);
+  basPied(1);
+  const bas = BAS[0] < BAS[1] ? BAS[0] : BAS[1];
+  if (bas < 0) {
+    mesh.position.y -= bas;
+    mesh.updateMatrixWorld(true);
+  }
+}
+const NJ_T = new Float64Array(1); // dt de l'image (aucun flottant passé en argument)
+/**
+ * § E5.AF.5 : cible, rampe et poids de la course ninja. La course ninja REMPLACE l'état de locomotion « avant » existant
+ * (mêmes seuils, même hystérésis que avant / pas chassés / arrière) ; chassés, arrière, arrêt : la course d'avant. Rampe
+ * linéaire de AF.fonduS s, poids = smoothstep ; wH (haut du corps) suit w × (1 − geste) par la même rampe.
+ */
+function majNinja() {
+  const dt = NJ_T[0];
+  const speed = PLAYER.speed;
+  const v = Math.sqrt(P.vx * P.vx + P.vz * P.vz);
+  // course ninja = l'état « avant » existant (θ entre déplacement et visée sous 60°, hystérésis 10° : ANIM.corps.seuils),
+  // assez vite, course de référence active ; cible tenue pendant un dash
+  if (!(P.dashT > 0)) NJ[1] = S[LOCO] === 0 && v > AFK[K_VMIN] * speed && C.courseRef && JB[5] === 1 ? 1 : 0;
+  const pr = dt / AFK[K_FON];
+  const ec = NJ[1] - NJ[0];
+  NJ[0] += ec > pr ? pr : ec < -pr ? -pr : ec;
+  NJ[2] = NJ[0] * NJ[0] * (3 - 2 * NJ[0]);
+  const gq = geste[0] > 0.001 ? geste[0] : K[0];
+  const eh = NJ[2] * (1 - gq) - NJ[3];
+  NJ[3] += eh > pr ? pr : eh < -pr ? -pr : eh;
+  NJ[3] = NJ[3] < NJ[2] ? NJ[3] : NJ[2];
+}
+/**
+ * § E5.AF.4 : haut du corps de la course ninja, mêlé par wH — bras tendus en arrière et écartés, coude presque droit, tête
+ * relevée : directions MONDE, écrites en local selon le penché du corps et du buste (axe X le plus externe de l'ordre XZY :
+ * il s'ajoute au penché). Sans branche : wH = 0 rend la pose d'avant au bit près.
+ */
+function poseNinjaHaut() {
+  const wH = NJ[3];
+  NJ[4] = AFK[K_PEN] * wH + AFK[K_LEAN] * NJ[2] * S[GAIT]; // part ninja du penché (visée et bouches des armes de bras)
+  const bt = S[LEAN] + AFK[K_PEN] * wH;
+  const rx = HALF_PI + AFK[K_BRAS] - bt; // au-delà de 90° : le bras remonte derrière
+  angX[BG] += (rx - angX[BG]) * wH;
+  angX[BD] += (rx - angX[BD]) * wH;
+  angZ[BG] += (AFK[K_ECART] - angZ[BG]) * wH;
+  angZ[BD] += (-AFK[K_ECART] - angZ[BD]) * wH;
+  angX[ABG] += (-AFK[K_AVB] - angX[ABG]) * wH;
+  angX[ABD] += (-AFK[K_AVB] - angX[ABD]) * wH;
+  const tl = AFK[K_TETE] - bt; // tête : tangage local borné (pose dans les bornes du cou, sans passer par contraindre)
+  angX[TETE] += ((tl > AFK[K_TMIN] ? tl : AFK[K_TMIN]) - angX[TETE]) * wH;
+  if (NJ_ON[0] === 1) poseNinja13();
+}
+/**
+ * § E5.AF.6 : la pose ninja pleine (wH = 1) dans les 13 valeurs d'un geste (combos : bras droit levée φ / lacet λ /
+ * coude, bras gauche, torsion, buste penché, roulis, accroupi, bassin, tête, avance). Bras v = Rx(r)·Rz(z)·(0, −1, 0) =
+ * (sin z, −cos z cos r, −cos z sin r) ⇒ cos φ = cos z cos r, λ = atan2(sin z, −cos z sin r) (heros-anim reconvertit en
+ * x = r, z = z). Buste penché et tête : 0 (le geste part de sa propre pose neutre ; ceux de la course ninja se fondent par wH).
+ */
+function poseNinja13() {
+  const r = HALF_PI + AFK[K_BRAS] - S[LEAN] - AFK[K_PEN];
+  const z = AFK[K_ECART];
+  const cz = Math.cos(z);
+  const sz = Math.sin(z);
+  const cr = Math.cos(r);
+  const sr = Math.sin(r);
+  const phi = Math.acos(cz * cr);
+  NJ13[0] = phi;
+  NJ13[1] = Math.atan2(-sz, -cz * sr); // bras droit : z = −écart
+  NJ13[2] = AFK[K_AVB];
+  NJ13[3] = phi;
+  NJ13[4] = Math.atan2(sz, -cz * sr);
+  NJ13[5] = AFK[K_AVB];
+  // buste penché (7) et tête (11) à 0 : la course ninja garde les siens et les fond en 0,2 s (wH), le geste part de 0
+}
+//#endregion e5:AF-course-shinobi
 
 function pose() {
   const g = S[GAIT];
@@ -1844,6 +2064,7 @@ function pose() {
     CR_IN[6] = sa;
     CR_IN[7] = chasse;
     CR_IN[8] = S[AMPL] / C.amplitude[0];
+    CR_W[0] = NJ_ON[0] === 1 ? NJ[2] : K[0]; // § E5.AF : poids de la table ninja (Shinobi seulement)
     poseCourse();
     const am = Am > 1e-3 ? Am : K[1];
     lg = CR_L[0] / am; // bras : balancier en phase avec la cuisse
@@ -1920,6 +2141,9 @@ function pose() {
   angX[TETE] = -0.5 * S[LEAN] + 0.015 * idle * br; // la tête compense : le regard reste à l'horizon
   if (STY[ST_ON] === 1) angX[TETE] += (STY[ST_TETE] - STY[ST_PENCHE]) * g; // § E5.F : tête basse (buste penché compensé en partie)
   angZ[TETE] = -0.4 * S[ROLL];
+  //#region e5:AF-course-shinobi
+  if (NJ_ON[0] === 1) poseNinjaHaut(); // § E5.AF.4 (Shinobi seulement)
+  //#endregion e5:AF-course-shinobi
   // visée (armes-heros.js) : le bras qui tire se lève vers sa cible, coude tendu, recul ; mêlé à la marche par son poids
   angY.fill(0);
   for (let k = 0; k < 2; k++) {
@@ -1928,7 +2152,8 @@ function pose() {
     const ib = k === 0 ? BD : BG;
     const ia = k === 0 ? ABD : ABG;
     const rec = visee[k * 4 + 3];
-    angX[ib] = angX[ib] * (1 - w) + (-HALF_PI - visee[k * 4 + 2] - 0.5 * rec) * w;
+    if (NJ_ON[0] === 1) angX[ib] = angX[ib] * (1 - w) + (-HALF_PI - visee[k * 4 + 2] - 0.5 * rec - NJ[4]) * w; // § E5.AF.7 : − penché ninja
+    else angX[ib] = angX[ib] * (1 - w) + (-HALF_PI - visee[k * 4 + 2] - 0.5 * rec) * w;
     angY[ib] = visee[k * 4 + 1] * w;
     angZ[ib] *= 1 - w;
     angX[ia] = angX[ia] * (1 - w) + -0.9 * rec * w; // le coude se replie sous le recul
@@ -1958,7 +2183,7 @@ function pose() {
       angX[ia] = angX[ia] * (1 - gw) + -geste[k === 0 ? 16 : 19] * gw;
       angY[ia] *= 1 - gw;
     }
-    angX[TETE] += (geste[13] - 0.7 * geste[10]) * gw;
+    angX[TETE] += NJ_ON[0] === 1 ? (geste[13] - 0.7 * geste[10]) * gw * (1 - NJ[3]) : (geste[13] - 0.7 * geste[10]) * gw; // § E5.AF.6 : fondu avec la tête ninja
     if (geste[12] > 0) {
       // vrille en l'air : jambes repliées (aucun appui, piedPose mode 0)
       const q = geste[12] * gw;
@@ -1994,9 +2219,10 @@ function pose() {
   bu.rotation.x = (S[LOCO] === 2 ? C.penchArriere * g : 0) + COUP_DE_PIED.recul * KW[2]; // § E4.J : recul du buste à la frappe
   BXZ[0] = bu.rotation.x; // § E5.F : penché d'avant ce chantier (pivot inchangé, au sol)
   if (gw > 0.001 && P.dashT <= 0 && geste[1] === 4) {
-    bu.rotation.x += geste[10] * gw; // § E5.F : buste penché dans le coup
+    bu.rotation.x += NJ_ON[0] === 1 ? geste[10] * gw * (1 - NJ[3]) : geste[10] * gw; // § E5.F : buste penché dans le coup ; § E5.AF.6 : fondu avec le penché ninja
     bu.rotation.z = geste[11] * gw;
   } else bu.rotation.z = K[0];
+  if (NJ_ON[0] === 1) bu.rotation.x += AFK[K_PEN] * NJ[3]; // § E5.AF.4 : buste penché de la course ninja (pivot à l'abdomen, ci-dessous)
   if (STY[ST_ON] === 1 && course) {
     // § E5.F : Bastion — buste penché en avant, épaules qui roulent (en opposition avec les jambes), le buste bascule
     // sur la jambe d'appui (appui gauche au début du cycle, centré à 0,14)
@@ -2082,7 +2308,11 @@ function pose() {
   // § E3.M : pas glissé vers le coup (avance), accroupi, vrille (tour entier du corps) — dessin seulement
   if (gw > 0.001 && P.dashT <= 0) {
     const av = geste[6] * gw;
-    mesh.position.set(P.x + Math.sin(geste[8]) * av, bob - geste[7] * gw, P.z + Math.cos(geste[8]) * av);
+    // § E5.AF : en course ninja, l'accroupi du geste (> 0) est retiré par le poids w — le corps est déjà bas, ajouté à la
+    // course ninja il pliait le genou d'appui au-delà de sa borne (155°) et enfonçait le pied (anim-pieds, horde : −7,7 cm) ;
+    // le vol de la vrille (< 0) reste entier
+    const acc = NJ_ON[0] === 1 && geste[7] > 0 ? geste[7] * (1 - NJ[2]) : geste[7];
+    mesh.position.set(P.x + Math.sin(geste[8]) * av, bob - acc * gw, P.z + Math.cos(geste[8]) * av);
     mesh.rotation.set(S[LEAN], S[LOWYAW] + geste[5] + TORS_EX[0], S[ROLL]);
   } else {
     // 16/11 (point 11) : bond sismique du Bastion — le corps monte en cloche pendant le trajet (dessin seulement)
@@ -2622,6 +2852,7 @@ export function sync() {
   appliquerCoup(S[FRAME_DT]); // § E4.O : coup de pied cuit, tout le corps
   appliquerBond(); // § E5.F : bond du Bastion, « Jump Attack » cuit
   contraindre(); // § E5.F : bornes articulaires, après TOUT ce qui pose le corps (procédural, clips cuits, mélanges)
+  if (NJ_ON[0] === 1 && NJ[2] > 0) solNinja(); // § E5.AF : jamais un pied sous le sol en course ninja (après les bornes)
   if (bones.oeil) {
     if (!oeilBase) oeilBase = bones.oeil.position.clone();
     glitchOeil(bones.oeil, oeilBase, S[TIME]);
@@ -2715,6 +2946,7 @@ export function inspect(out) {
   out.appui = Array.from(mesurePieds); // détail (voir mesurePieds) : hauteurs de la semelle, phase, angles du pied
   out.torsionDeg = ((S[AIMYAW] - S[LOWYAW]) * 180) / Math.PI;
   out.course = { jambe: Array.from(JB), talon: TALON[0], hanche: Array.from(CR_H), cycle: CR_DCYC[0], ecart: CR_ECART[0] }; // course de référence (16/11)
+  out.ninja = { actif: NJ_ON[0], rampe: NJ[0], cible: NJ[1], w: NJ[2], wH: NJ[3], penche: NJ[4], sigma: NJ[5], angle: NJ[7], cycle: NJ_DC[0], hanche: NJ_H0[0], cuisse: Array.from(NJ_C), genou: Array.from(NJ_G) }; // § E5.AF
   const c = {};
   cape.inspect(c);
   out.cape = c;

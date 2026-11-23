@@ -774,7 +774,11 @@ export function bouche(w, out) {
     const fy = f.rotation.y;
     let lacet = DES[k];
     lacet = lacet < -CONE ? -CONE : lacet > CONE ? CONE : lacet; // dans le cône du buste
-    a.rotation.set(-HALF_PI - DES[2 + k], lacet, 0);
+    //#region e5:AF-course-shinobi
+    // § E5.AF.7 : pose visée compensée du penché de la course ninja (canon à l'horizontale, bouche à sa hauteur d'avant)
+    const nj = heros.courseNinja[4];
+    a.rotation.set(nj > 0 ? -HALF_PI - DES[2 + k] - nj : -HALF_PI - DES[2 + k], lacet, 0);
+    //#endregion e5:AF-course-shinobi
     f.rotation.x = 0;
     f.rotation.y = k === 0 ? HALF_PI : -HALF_PI; // pronation de la pose visée (voir heros-anim)
     a.updateMatrixWorld(true);

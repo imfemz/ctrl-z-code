@@ -344,7 +344,6 @@
   color: var(--pile-texte);
 }
 
-
 :root[data-sr-theme='carte-mere'] .sr-title .sr-notes-chev {
   color: var(--pile-gris);
 }
@@ -416,6 +415,10 @@
   gap: 0.35rem;
   width: 100%;
   margin: 0;
+  /* § E5.AG (22/11) : sans le padding de 0,3 rem de .sr-btn-col (ui.css) — tous les mots au bord --pile-gauche, comme le
+     titre « Pause », et la barre jaune part du bord (avant : Reprendre / Inventaire / Recommencer / Quitter 9 px plus à
+     droite que Paramètres à 2560 × 1440) */
+  padding: 0;
 }
 
 :root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-plis > .sr-btn .sr-btn-label::after {
@@ -690,9 +693,7 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-carac::before,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-carac::after,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche::before,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche::after,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard::before,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard::after {
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche::after {
   content: none;
 }
 
@@ -741,25 +742,6 @@
   background: none;
   box-shadow: none;
   border: 0;
-}
-
-/* agents : des lignes ; la barre jaune sur l'agent visé (clavier) ou survolé, le texte passe en nuit */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard {
-  background: none;
-  box-shadow: none;
-  border: 0;
-  transition: background-color 0.12s;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard:hover,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard.sr-sel {
-  background: var(--pile-jaune);
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard:hover *,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-acard.sr-sel * {
-  color: var(--pile-nuit);
-  text-shadow: none;
 }
 
 /* pied : « Retour » en gris, « Jouer · <agent> » en jaune, sans cadre ni touche */
@@ -1128,127 +1110,10 @@
   color: var(--pile-doux);
 }
 
-/* =====================================================================================================================
-   NOYAU, onglet Agents v2 (Femz, 19/11 : « tout est trop à gauche et compacté ») : trois zones sur TOUTE la largeur —
-   la liste des agents à gauche ; l'agent en grand au centre ; à droite son nom, son arme, son passif et ses
-   caractéristiques, dans cet ordre (ce qu'on lit pour choisir).
-   ===================================================================================================================== */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-agents-page {
-  display: grid;
-  grid-template-columns: 15rem minmax(0, 1fr);
-  gap: 2.5rem;
-  width: 100%;
-  align-items: start;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-agents.sr-hub-agents {
-  width: auto;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche-hote {
-  padding: 0;
-  min-width: 0;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 24rem;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
-  column-gap: 3rem;
-  row-gap: 1rem;
-  width: auto;
-  padding: 0;
-}
-
-/* corps et colonne gauche « ouverts » : leurs enfants (arme signature, passif, portrait) se placent dans la grille */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-corps,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-corps > .sr-fiche-col:first-child {
-  display: contents;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait {
-  grid-column: 1;
-  grid-row: 1 / 6;
-  align-self: center;
-  justify-self: center;
-  padding: 0;
-  background: none;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait img {
-  width: round(nearest, 12rem, 48px);
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-3d .sr-fiche-3d {
-  width: 15rem;
-  height: 21rem;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau > h2 {
-  grid-column: 2;
-  grid-row: 1;
-  margin: 0;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-sig {
-  grid-column: 2;
-  grid-row: 2;
-  width: 4.6rem;
-  height: 4.6rem;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-passif {
-  grid-column: 2;
-  grid-row: 3;
-  background: none;
-  box-shadow: none;
-  padding: 0;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau > .sr-carac {
-  grid-column: 2;
-  grid-row: 4;
-  position: static;
-  width: auto;
-  padding: 1rem 0 0;
-  border-top: 1px solid var(--pile-filet);
-}
-
 /* retouches : 6 emplacements d'objets = une rangée de 6 ; au Noyau, les caractéristiques sur deux colonnes (elles
    débordaient en bas) et l'image fixe d'un agent pas encore chargé à sa taille d'avant (agrandie, elle bavait) */
 :root[data-sr-theme='carte-mere'] .sr-pause-gauche > .sr-fiche > .sr-fiche-objets {
   grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-carac-liste {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 1.6rem;
-}
-
-/* chaque ligne (nom … valeur) devient une case de la grille à deux colonnes (ui.css la met en display: contents) */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-carac-ligne {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.6rem;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait img {
-  width: round(nearest, 9rem, 48px);
-}
-
-/* colonne de droite du Noyau un peu resserrée : la dernière ligne des caractéristiques était coupée en bas */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau {
-  row-gap: 0.6rem;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-sig {
-  width: 3.6rem;
-  height: 3.6rem;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau > .sr-carac {
-  padding-top: 0.7rem;
 }
 
 /* =====================================================================================================================
@@ -1972,15 +1837,12 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-debloque { --c: #5cf07a; }
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-pauvre { --c: #4d6b7a; }
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente.sr-attente { --c: #6d7a75; }
-/* !important : la case est partagée avec l'inventaire de la pause, qui pose --c (palier de niveau) EN LIGNE sur l'élément */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide) { --c: #ff4b5c !important; }
 
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-vu,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide) {
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente {
   --b: 0.7rem;
   position: relative;
   isolation: isolate;
@@ -1996,8 +1858,7 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::before,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::before,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::before,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide)::before {
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -2077,13 +1938,11 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide) {
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente {
   background:
     linear-gradient(135deg, transparent 15%, color-mix(in srgb, var(--c) 40%, transparent) 50%, transparent 50%) left top / var(--b) var(--b) no-repeat,
     linear-gradient(315deg, transparent 15%, color-mix(in srgb, var(--c) 40%, transparent) 50%, transparent 50%) right bottom / var(--b) var(--b) no-repeat;
 }
-
 
 /* =====================================================================================================================
    LOOK GLOW v2 (Femz, 20/11 : « non, tu as créé un comblage — je veux que TOUTE la bordure et le glow soient adéquats
@@ -2112,7 +1971,6 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide),
 :root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case.sr-sel,
 :root[data-sr-theme='carte-mere'] .sr-shop .sr-shop-case:hover,
 :root[data-sr-theme='carte-mere'] .sr-levelup .sr-cards > .sr-card:hover,
@@ -2147,8 +2005,7 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::before,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::before,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::before,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide)::before {
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::before {
   box-shadow: inset 0 0 0.9rem color-mix(in srgb, var(--c) 16%, transparent);
   background: linear-gradient(160deg, color-mix(in srgb, var(--c) 16%, var(--glow-fond, #0b1118)) 0%, var(--glow-fond, #0b1118) 45%, #080d13 100%);
 }
@@ -2179,8 +2036,7 @@
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-case.sr-revele::after,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-fiche::after,
 :root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-succes::after,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::after,
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche-noyau .sr-fiche-arme:not(.sr-vide)::after {
+:root[data-sr-theme='carte-mere'] .sr-hub .sr-hub-vente::after {
   content: '';
   position: absolute;
   inset: calc(var(--b) * -1.2);
@@ -2678,7 +2534,7 @@
 
 /* Fiche (Noyau et pause) avant le portrait 3D (Femz, 21/11) : la planche animée de l'écran des agents, plus la vignette
    48 × 68 agrandie. Cadre à l'image de la planche (80 × 120 px d'art), hauteur de l'ancienne vignette ; la planche y
-   défile en steps() comme .sr-agent .sr-acard-portrait img.sr-anime (ui.css) ; verrouillé : silhouette fixe. */
+   défile en steps() (@keyframes sr-acard-idle, ui.css) ; verrouillé : silhouette fixe. */
 :root[data-sr-theme='carte-mere'] .sr-fiche-portrait .sr-fiche-fig {
   display: block;
   overflow: hidden;
@@ -2695,7 +2551,6 @@
   display: none;
 }
 
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait .sr-fiche-fig img,
 :root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig img {
   width: 100%;
   height: 100%;
@@ -2705,7 +2560,6 @@
   image-rendering: pixelated;
 }
 
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait .sr-fiche-fig img.sr-anime,
 :root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig img.sr-anime {
   width: calc(var(--n) * 100%);
   object-fit: fill;
@@ -2713,7 +2567,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait .sr-fiche-fig img.sr-anime,
   :root[data-sr-theme='carte-mere'] .sr-pause-gauche .sr-fiche-portrait .sr-fiche-fig img.sr-anime {
     animation: none;
     transform: none;
@@ -2939,6 +2792,23 @@
 .sr-confirmable.sr-arme .sr-btn-compte {
   background: #ffffff;
 }
+
+/* § E5.AG (22/11) : armé, le libellé reste au bord des autres mots (l'align-items: center du bouton « Pile » le centrait) */
+:root[data-sr-theme='carte-mere'] .sr-pause > .sr-panel .sr-btn-col > .sr-btn.sr-confirmable.sr-arme {
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* #region e5:AN-quitter-pause — § E5.AN (22/11) : le décompte est une MINUTERIE (sa fin désarme le bouton, ui.js), pas une
+   décoration. La règle globale de mouvement réduit (ui.css : tout #ui-root à 0,001 s) le finissait tout de suite :
+   « Quitter la partie » / « Recommencer » se désarmaient à l'image suivante et le 2e clic ré-armait — rien ne se passait
+   jamais (testeur, app de bureau). Il garde sa durée : un filet de 2 px qui se vide lentement, jamais figé. */
+@media (prefers-reduced-motion: reduce) {
+  #ui-root .sr-confirmable.sr-arme .sr-btn-compte {
+    animation-duration: var(--duree, 3s) !important;
+  }
+}
+/* #endregion e5:AN-quitter-pause */
 
 /* =====================================================================================================================
    § E5.R FENÊTRE PARAMÈTRES (Femz, 21/11 : « réglage ouvre vers une autre fenêtre, met notre nouvelle DA UI glow, je
@@ -3309,87 +3179,12 @@
   content: none;
 }
 
-/* § E5.W (Femz, 21/11 : « on voit leur version pixelisée et ça fait cheap ») — Noyau : le modèle de l'agent choisi est en
-   lecture. Jamais l'image pixel : le dernier rendu 3D s'efface (opacité), une ligne de scan descend le cadre (transform),
-   « Chargement » en libellé FUI discret (data-attente, texte de config.js) ; le portrait 3D revient en fondu. Même cadre
-   que le portrait 3D (15 × 21 rem) : rien ne bouge autour quand il arrive. */
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente {
-  position: relative;
-  overflow: hidden;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente .sr-fiche-fig {
-  display: none;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente .sr-fiche-3d {
-  display: block;
-  width: 15rem;
-  height: 21rem;
-  image-rendering: pixelated;
-  opacity: 0;
-  transition: opacity 0.3s ease-out;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-3d .sr-fiche-3d {
-  transition: opacity 0.25s ease-out;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::before {
-  content: '';
-  position: absolute;
-  left: 1.5rem;
-  right: 1.5rem;
-  top: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--pile-vert), transparent);
-  opacity: 0.55;
-  pointer-events: none;
-  animation: sr-attente-scan 1.6s linear infinite;
-}
-
-:root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::after {
-  content: attr(data-attente);
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 2.5rem;
-  text-align: center;
-  font: 400 0.75rem/1 var(--sr-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--pile-doux);
-  pointer-events: none;
-  animation: sr-attente-pouls 1.1s ease-in-out infinite alternate;
-}
-
-@keyframes sr-attente-scan {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(21rem);
-  }
-}
-
 @keyframes sr-attente-pouls {
   from {
     opacity: 0.35;
   }
   to {
     opacity: 0.9;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::before {
-    animation: none;
-    transform: translateY(10.5rem);
-  }
-
-  :root[data-sr-theme='carte-mere'] .sr-hub .sr-fiche.sr-fiche-noyau .sr-fiche-portrait.sr-attente::after {
-    animation: none;
-    opacity: 0.75;
   }
 }
 
@@ -3401,7 +3196,7 @@
    ===================================================================================================================== */
 :root[data-sr-theme='carte-mere'] :is(
   .sr-lead, .sr-card-flav, .sr-card-desc, .sr-detail-effet, .sr-wdesc, .sr-wchoix-phrase, .sr-shop-explique,
-  .sr-consigne, .sr-pause-fige, .sr-param-aide, .sr-notes-ligne, .sr-infos-rule, .sr-acard-cond-txt,
+  .sr-consigne, .sr-pause-fige, .sr-param-aide, .sr-notes-ligne, .sr-infos-rule,
   .sr-hub-fiche-desc, .sr-hub-vente-desc, .sr-hub-succes-txt, .sr-hub-synth-txt, .sr-fiche-passif-txt,
   .sr-touches-statut, .sr-touches-garde
 ) {
@@ -3412,6 +3207,764 @@
 /* les chiffres des cartes restent des accents (Determination), sous la phrase en Mister Pixel 16 */
 :root[data-sr-theme='carte-mere'] .sr-card-desc .sr-card-stat {
   font-family: var(--sr-mono) !important;
+}
+
+
+/* =====================================================================================================================
+   ÉCRAN AGENTS (tâche 5, 22/11 ; maquette docs/maquettes-ecran-agents/grille-B2.png, mesurée à 2560 × 1440 où 1 rem =
+   32 px) : pleine page sur le fond peint (OPAQUE : la scène du titre ou du Noyau n'est pas rendue derrière), titre
+   « Agents », trois cartes 520 × 740 précalculées + leur bandeau (rôle, nom, arme, « N skins » ; verrouillé : condition
+   et progression), « Retour » à gauche, « Jouer · <agent> » en blanc à droite. Un seul élément jaune : le focus (cadre de
+   la carte visée, ou le libellé du bouton visé). Aucune touche affichée.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran {
+  padding: 2.4rem var(--pile-gauche) 0;
+  overflow: hidden;
+  background: #060c09;
+  color: var(--pile-texte);
+}
+
+/* couche 0 de la parallaxe : le fond peint, adouci et assombri D'AVANCE (fond-agents-grille.webp, 640 × 360 : un filtre
+   blur() sur l'image 2560 × 1440 coûtait une image de 170 à 320 ms à l'ouverture) ; plus grand que l'écran : son
+   glissement ne découvre aucun bord */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-fond {
+  position: absolute;
+  inset: -1.5rem;
+  z-index: 0;
+  background: center / cover no-repeat #060c09;
+  pointer-events: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran > :not(.sr-ae-fond) {
+  position: relative;
+  z-index: 1;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-tete h2 {
+  font: 400 2.6rem/1 var(--sr-mono);
+  letter-spacing: 0.03em;
+  color: var(--pile-texte);
+  text-shadow: 0 0.1rem 0.5rem rgba(0, 0, 0, 0.85);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-tete .sr-lead {
+  margin-top: 0.85rem;
+  font-size: 1.05rem;
+  color: var(--pile-doux);
+  text-shadow: 0 0.1rem 0.4rem rgba(0, 0, 0, 0.85);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-cartes {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1.55rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 16.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0.09rem solid transparent;
+  background: rgba(7, 11, 10, 0.94);
+  color: var(--pile-texte);
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte::before,
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte::after {
+  content: none;
+}
+
+/* le focus : le SEUL élément jaune de l'écran */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte.sr-focus {
+  border-color: var(--pile-jaune);
+  box-shadow: 0 0 1.4rem rgba(244, 240, 80, 0.3);
+}
+
+/* focus sur « Retour » / « Jouer » : la carte de l'agent de « Jouer » reste repérée, en blanc discret */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte.sr-vise {
+  border-color: rgba(233, 240, 236, 0.35);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte-img {
+  position: relative;
+  aspect-ratio: 520 / 740;
+  overflow: hidden;
+}
+
+/* l'image dépasse de sa boîte (overflow: hidden) de 0,6 rem de chaque côté : la parallaxe décale la couche 2 de
+   (20 − 12) px × échelle au plus, soit 0,5 rem ; sans cette marge, une bande du fond de carte serait découverte */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte-img img {
+  position: absolute;
+  left: -0.6rem;
+  top: -0.6rem;
+  display: block;
+  width: calc(100% + 1.2rem);
+  height: calc(100% + 1.2rem);
+  object-fit: cover;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-cadenas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-size: 2.4rem;
+  color: var(--pile-texte);
+  opacity: 0.92;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0.1rem 0.4rem rgba(0, 0, 0, 0.6));
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-carte-bas {
+  position: relative;
+  flex: 1;
+  box-sizing: border-box;
+  min-height: 5rem;
+  padding: 0.8rem 1rem 0.8rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-role {
+  font: 400 0.85rem/1 var(--sr-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-verrou .sr-ae-role {
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-nom {
+  margin-top: 0.35rem;
+  font: 400 1.95rem/1 var(--sr-mono);
+  letter-spacing: 0.02em;
+  color: var(--pile-texte);
+  white-space: nowrap;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-cond {
+  margin-top: 0.6rem;
+  font: 400 0.95rem/1.15 var(--sr-text);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-prog {
+  margin-top: 0.3rem;
+  font: 400 0.7rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-skins {
+  position: absolute;
+  top: 0.8rem;
+  right: 1rem;
+  font: 400 0.68rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-doux);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-arme {
+  position: absolute;
+  right: 0.9rem;
+  bottom: 0.75rem;
+  font-size: 2.1rem;
+}
+
+/* pied : « Retour » en gris, « Jouer · <agent> » en blanc ; le bouton visé en jaune ; un trait fin au-dessus */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding: 1rem 0 1.5rem;
+  border-top: 1px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-btn {
+  min-width: 0;
+  padding: 0.5rem 0;
+  background: none;
+  box-shadow: none;
+  font: 400 1.15rem/1 var(--sr-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+  text-shadow: 0 0.1rem 0.4rem rgba(0, 0, 0, 0.85);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-btn::before,
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-btn::after {
+  content: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-btn .sr-btn-label {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-ae-jouer {
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-ae-jouer.sr-refuse {
+  opacity: 0.5;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-btn.sr-focus {
+  color: var(--pile-jaune);
+}
+
+/* =====================================================================================================================
+   ÉCRAN AGENTS — FICHE PERSO (tâche 6 ; maquettes docs/maquettes-ecran-agents/fiche-B5.png et fiche-B2-verrouille.png,
+   maquette-B5.html, mesurées à 2560 × 1440 où 1 rem = 32 px) : fond peint net (VITRINE.fonds.agents) + voiles de
+   lisibilité, l'agent en 3D (toile plein écran de la vitrine) PAR-DESSUS les voiles, skins à gauche, arme / rôle / nom /
+   passif / barres à droite. Un seul élément jaune : le focus (vignette, ou « Retour » / « Jouer » du pied). Le skin choisi
+   est coché en vert ; un skin verrouillé : silhouette + cadenas. src/ui-agents-fiche.js.
+   ===================================================================================================================== */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran > .sr-ae-fiche {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  --ae-accent: #ef9628; /* accent de l'agent (posé par la fiche) : crans des barres */
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-fiche-fond {
+  position: absolute;
+  inset: 0;
+  background: center / cover no-repeat #060c09;
+  pointer-events: none;
+}
+
+/* voiles (maquette-B5.html .voile) : gauche plus sombre, droite, bas et haut — le texte est toujours sur du sombre */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-voile {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(4, 9, 8, 0.86) 0, rgba(4, 9, 8, 0.7) 17.5rem, rgba(4, 9, 8, 0.32) 25.625rem, rgba(4, 9, 8, 0) 31.875rem),
+    linear-gradient(270deg, rgba(4, 9, 8, 0.78) 0, rgba(4, 9, 8, 0.6) 20rem, rgba(4, 9, 8, 0.22) 28.125rem, rgba(4, 9, 8, 0) 33.125rem),
+    linear-gradient(0deg, rgba(4, 9, 8, 0.9) 0, rgba(4, 9, 8, 0.55) 4.6875rem, rgba(4, 9, 8, 0) 10.625rem),
+    linear-gradient(180deg, rgba(4, 9, 8, 0.62) 0, rgba(4, 9, 8, 0) 8.75rem);
+}
+
+/* l'agent : toile plein écran (le cadre « fiche » de la vitrine est relatif à elle) ; il apparaît en fondu à l'arrivée de
+   son modèle, caché pendant « Chargement » */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-toile {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche.sr-attente .sr-ae-toile {
+  opacity: 0;
+  transition: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-agent-cadenas {
+  position: absolute;
+  left: 46.4%;
+  top: 35.4%;
+  font-size: 2.5rem;
+  color: var(--pile-doux);
+  opacity: 0.92;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-attente {
+  position: absolute;
+  left: 47.1%;
+  top: 44.4%;
+  display: none;
+  font: 400 0.95rem/1 var(--sr-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche.sr-attente .sr-ae-attente {
+  display: block;
+  animation: sr-attente-pouls 0.8s ease-in-out infinite alternate;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche.sr-attente .sr-ae-agent-cadenas {
+  display: none;
+}
+
+/* en-tête : « Agents / Shinobi », à la place du titre de la grille */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-fiche-titre {
+  position: absolute;
+  left: var(--pile-gauche);
+  top: 2.4rem;
+  margin: 0;
+  font: 400 2.6rem/1 var(--sr-mono);
+  letter-spacing: 0.03em;
+  color: var(--pile-texte);
+  text-shadow: 0 0.1rem 0.5rem rgba(0, 0, 0, 0.85);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-chemin {
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+  color: var(--pile-gris);
+}
+
+/* ----- colonne gauche : skins ----- */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-gauche {
+  position: absolute;
+  left: var(--pile-gauche);
+  top: 9.25rem;
+  width: 18.25rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-skins-tete {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 0.2rem;
+  border-bottom: 2px solid var(--pile-filet);
+  font: 400 0.95rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-skins-titre {
+  color: var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-skins-compte {
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignettes {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 8.75rem;
+  height: 10.3125rem;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0.125rem solid transparent;
+  background: rgba(7, 11, 16, 0.78);
+  box-shadow: inset 0 0 0 2px var(--pile-filet);
+  color: var(--pile-texte);
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette::before,
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette::after {
+  content: none;
+}
+
+/* le focus : le SEUL élément jaune de la fiche */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette.sr-focus {
+  border-color: var(--pile-jaune);
+  box-shadow: 0 0 0.6rem rgba(244, 240, 80, 0.35);
+}
+
+/* skin visé, focus ailleurs (au pied) : repéré en blanc discret */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette.sr-vise:not(.sr-focus) {
+  border-color: rgba(233, 240, 236, 0.35);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette-img {
+  position: relative;
+  flex: none;
+  height: 7.3rem;
+  overflow: hidden;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette-img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center bottom;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette-cadenas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-size: 1.5rem;
+  color: var(--pile-doux);
+  transform: translate(-50%, -50%);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette-bande {
+  position: relative;
+  flex: 1;
+  padding: 0.42rem 0.6rem 0;
+  background: #0b1210;
+  border-top: 2px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette-nom {
+  font: 400 0.85rem/1 var(--sr-mono);
+  letter-spacing: 0.04em;
+  color: var(--pile-texte);
+  white-space: nowrap;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette-statut {
+  margin-top: 0.5rem;
+  font: 400 0.62rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-vignette.sr-choisi .sr-ae-vignette-statut {
+  color: var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-coche {
+  position: absolute;
+  right: 0.55rem;
+  top: 0.9rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: var(--pile-vert);
+  stroke-width: 2;
+  shape-rendering: crispEdges;
+}
+
+/* skin visé : choisi (nom + ligne) ou verrouillé (cadenas, condition) */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 2px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font: 400 0.95rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail-kicker.sr-verrou {
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail-kicker .sr-ic {
+  width: 0.7rem;
+  height: 0.7rem;
+  fill: currentColor;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail-nom {
+  margin-top: 0.55rem;
+  font: 400 1.25rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail-texte {
+  margin-top: 0.55rem;
+  font: 400 0.95rem/1.35 var(--sr-text);
+  color: var(--pile-doux);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-detail-kicker.sr-verrou ~ .sr-ae-detail-texte {
+  color: var(--pile-texte);
+}
+
+/* ----- colonne droite : arme de départ, rôle, nom, passif, barres ----- */
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-droite {
+  position: absolute;
+  right: var(--pile-gauche);
+  top: 9.375rem;
+  width: 22.875rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-arme-bloc {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-embleme {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  background: #1a0b0f;
+  box-shadow: inset 0 0 0 3px var(--ae-root), inset 0 0 0.5rem rgba(255, 75, 92, 0.5);
+  clip-path: polygon(0.9rem 0, 100% 0, 100% calc(100% - 0.9rem), calc(100% - 0.9rem) 100%, 0 100%, 0 0.9rem);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-embleme .sr-ic {
+  width: 2.9rem;
+  height: 2.9rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-arme-kicker {
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-arme-ligne {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.45rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-arme-nom {
+  font: 400 1.05rem/1 var(--sr-mono);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-root {
+  padding: 0.18rem 0.4rem;
+  border: 2px solid var(--ae-root);
+  font: 400 0.7rem/1 var(--sr-mono);
+  letter-spacing: 0.12em;
+  color: var(--ae-root);
+  cursor: help;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-fiche-role {
+  margin-top: 1.3rem;
+  font: 400 1.05rem/1 var(--sr-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--pile-vert);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-fiche-nom {
+  margin: 0.25rem 0 0 -0.25rem;
+  font: 400 4.9rem/1 var(--sr-mono);
+  letter-spacing: 0.01em;
+  color: var(--pile-texte);
+  white-space: nowrap;
+  text-shadow: 0 0.1rem 0.6rem rgba(0, 0, 0, 0.6);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-fiche-nom.sr-accent {
+  margin-top: 0.75rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-passif {
+  margin-top: 0.5rem;
+  padding-top: 0.95rem;
+  border-top: 2px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-passif-nom {
+  font: 400 0.95rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-passif-texte {
+  margin-top: 0.55rem;
+  font: 400 0.95rem/1.35 var(--sr-text);
+  color: var(--pile-doux);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barres {
+  margin-top: 0.95rem;
+  padding-top: 1.1rem;
+  border-top: 2px solid var(--pile-filet);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barre {
+  position: relative;
+  height: 1.6rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barre + .sr-ae-barre {
+  margin-top: 0.775rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barre-lab,
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barre-val {
+  position: absolute;
+  top: 0;
+  font: 400 1rem/1.6rem var(--sr-mono);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barre-lab {
+  left: 0;
+  color: var(--pile-doux);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-barre-val {
+  right: 0;
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-pips {
+  position: absolute;
+  left: 7rem;
+  top: 0.4rem;
+  display: flex;
+  gap: 0.25rem;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-pip {
+  width: 2.1rem;
+  height: 0.8rem;
+  background: rgba(233, 240, 236, 0.12);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-ae-fiche .sr-ae-pip.sr-on {
+  background: var(--ae-accent);
+}
+
+/* ----- pied de la fiche : « en skin <porté> » sous « Jouer » ; agent verrouillé : sa condition à la place ----- */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-ae-indice {
+  position: absolute;
+  right: 0;
+  bottom: 0.55rem;
+  font: 400 0.8rem/1 var(--sr-text);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--pile-gris);
+}
+
+/* hors du flux (comme l'indice) : le pied garde la hauteur de celui de la grille */
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied .sr-ae-pied-cond {
+  position: absolute;
+  right: 0;
+  bottom: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  text-align: right;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied-cond-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font: 400 0.75rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied-cond-kicker .sr-ic {
+  width: 0.65rem;
+  height: 0.65rem;
+  fill: currentColor;
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied-cond-texte {
+  font: 400 1.05rem/1.1 var(--sr-text);
+  color: var(--pile-texte);
+}
+
+:root[data-sr-theme='carte-mere'] .sr-agents-ecran .sr-ae-pied-cond-prog {
+  font: 400 0.7rem/1 var(--sr-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pile-gris);
+}
+
+/* =====================================================================================================================
+   ÉCRAN TITRE PEINT (Écran Agents, tâche 7 ; src/menu/accueil.js) — calque sous #ui-root, au-dessus du canvas du jeu :
+   fond peint, voile du menu, cône du projecteur et halo au sol (couleurs et positions posées par accueil.js depuis
+   VITRINE.titre), toile de la vitrine (agent), poussière. Aucun clic.
+   ===================================================================================================================== */
+.sr-accueil {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #060c09;
+}
+
+.sr-accueil > * {
+  position: absolute;
+  pointer-events: none;
+}
+
+.sr-accueil-fond,
+.sr-accueil-voile,
+.sr-accueil-cone,
+.sr-accueil-toile {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.sr-accueil-fond {
+  background: center / cover no-repeat #060c09;
+}
+
+/* cône de lumière du projecteur de l'ancien écran titre, très léger (maquette titre-b5v3 : 18 px de flou à 1440) */
+.sr-accueil-cone {
+  mix-blend-mode: screen;
+  filter: blur(1.25vh);
+}
+
+.sr-accueil-flaque {
+  border-radius: 50%;
+  mix-blend-mode: screen;
+}
+
+/* modèle de l'agent pas encore arrivé : rien ; puis il apparaît en fondu (comme la fiche) */
+.sr-accueil-toile {
+  opacity: 1;
+  transition: opacity 0.35s ease-out;
+}
+
+.sr-accueil.sr-attente .sr-accueil-toile {
+  opacity: 0;
+  transition: none;
+}
+
+.sr-accueil-poussiere {
+  top: 0;
 }
 
 /* § E5.X4 (audit F1, Femz 22/11 « go pour l'étape ») : un bilan rempli (8 vagues, 5 armes, 2 succès) faisait 1 618 px pour

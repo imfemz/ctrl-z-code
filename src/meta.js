@@ -5,10 +5,11 @@
 // Aucune stat permanente : un déblocage fait seulement entrer un élément dans le tirage.
 import {
   AGENTS, AGENT_COUNT, DEFIS, DEFI_COND, DEFI_COUNT, DEFI_RECOMP, ENEMY_COUNT, ITEM_COUNT, ITEM_KEYS, META, META_BUY,
-  STORAGE, UTIL_COUNT, UTILITIES, WEAPON_COUNT, WEAPON_KEYS, cyclesDetail,
+  SKIN_BASE, STORAGE, UTIL_COUNT, UTILITIES, WEAPON_COUNT, WEAPON_KEYS, cyclesDetail, skinsDe,
 } from './config.js';
 import { CAUSE_COUNT } from './config.js'; // § E5.Q (Femz, 21/11) : morts par cause, d'une partie à l'autre
 import { EVOLUTIONS } from './config.js'; // § E5.X7 (H2) : recette connue
+import { ITEMS } from './config.js'; // § E5.AL : objet retiré (ITEMS[id].retire) — jamais dans le tirage
 
 function statsVierges() {
   return {
@@ -34,6 +35,7 @@ const data = {
   succes: [], // clés des succès réussis
   succesDates: {}, // clé → date de réussite (ms), lue par le hub
   vu: [], // Collection : 'arme:<clé>', 'objet:<clé>', 'robot:<n>' déjà obtenus / rencontrés
+  skins: {}, // skin choisi par agent : { [agentKey]: skinKey } (tâche skins)
   consignes: [], // § E5.L : consignes déjà montrées ('deplacer', 'dash', 'terminal') — une fois par profil
   stats: statsVierges(),
   lastRun: null, // résumé de la dernière partie (bilan), réécrit à chaque finishRun
@@ -69,6 +71,7 @@ function reinit() {
   for (const k in data.succesDates) delete data.succesDates[k];
   data.vu.length = 0;
   data.consignes.length = 0; // § E5.L
+  for (const k in data.skins) delete data.skins[k];
   data.stats = statsVierges();
   data.lastRun = null;
 }
@@ -163,6 +166,7 @@ export function load(preset = null) {
     if (o.succesDates && typeof o.succesDates === 'object') for (const k in o.succesDates) if (Number.isFinite(o.succesDates[k])) data.succesDates[k] = o.succesDates[k];
     data.vu.push(...strs(o.vu));
     data.consignes.push(...strs(o.consignes)); // § E5.L
+    if (o.skins && typeof o.skins === 'object' && !Array.isArray(o.skins)) for (const k in o.skins) if (typeof o.skins[k] === 'string') data.skins[k] = o.skins[k];
     const s = o.stats && typeof o.stats === 'object' ? o.stats : {};
     const S = data.stats;
     for (const k of ['parties', 'kills', 'boss', 'elites', 'coffres', 'relances', 'evolutionsFaites', 'fusionsFaites', 'fragments', 'tempsJeu', 'cyclesSucces', 'vagues']) S[k] = nat(s[k]);
@@ -203,10 +207,40 @@ export function isUnlocked(kind, key) {
   return !LOCKED.has(k) || data.unlocked.indexOf(k) >= 0;
 }
 
+/** Agent d'indice a verrouillé ? Le premier (l'Éclaireur) ne l'est jamais ; les autres suivent META.verrous.agent. */
+export function agentVerrouille(a) {
+  return a !== 0 && !isUnlocked('agent', AGENT_KEYS[a]);
+}
+
+//#region skins
+/** Skin `skinKey` de l'agent débloqué ? `base` toujours ; mode 'tout' : tout ; sinon `skin:<agent>:<skin>` dans unlocked. */
+export function skinDebloque(agentKey, skinKey) {
+  if (skinKey === SKIN_BASE || mode === 'tout') return true;
+  return data.unlocked.indexOf('skin:' + agentKey + ':' + skinKey) >= 0;
+}
+
+/** Skin à porter : le choix gardé s'il est connu ET débloqué, sinon 'base'. */
+export function skinChoisi(agentKey) {
+  const k = Object.prototype.hasOwnProperty.call(data.skins, agentKey) ? data.skins[agentKey] : SKIN_BASE;
+  return skinsDe(agentKey).includes(k) && skinDebloque(agentKey, k) ? k : SKIN_BASE;
+}
+
+/** Choisit le skin d'un agent. Faux (rien ne change) si inconnu ou verrouillé ; vrai : gardé et écrit (hors combat). */
+export function choisirSkin(agentKey, skinKey) {
+  if (!skinsDe(agentKey).includes(skinKey) || !skinDebloque(agentKey, skinKey)) return false;
+  data.skins[agentKey] = skinKey;
+  write();
+  return true;
+}
+//#endregion skins
+
 /** Remplit WEAPON_OK, ITEM_OK, UTIL_OK, AGENT_OK (main.resetAll, hors combat). */
 export function applyToRun() {
   for (let w = 0; w < WEAPON_COUNT; w++) WEAPON_OK[w] = isUnlocked('arme', WEAPON_KEYS[w]) ? 1 : 0;
   for (let i = 0; i < ITEM_COUNT; i++) ITEM_OK[i] = isUnlocked('objet', ITEM_KEYS[i]) ? 1 : 0;
+  //#region e5:AL-retrait-cryogel
+  for (let i = 0; i < ITEM_COUNT; i++) if (ITEMS[i].retire === true) ITEM_OK[i] = 0; // retiré (Cryogel) : jamais tiré, quel que soit le mode
+  //#endregion e5:AL-retrait-cryogel
   for (let u = 0; u < UTIL_COUNT; u++) UTIL_OK[u] = isUnlocked('util', UTIL_KEYS[u]) ? 1 : 0;
   for (let a = 0; a < AGENT_COUNT; a++) AGENT_OK[a] = isUnlocked('agent', AGENT_KEYS[a]) ? 1 : 0;
   AGENT_OK[0] = 1; // l'Éclaireur est toujours jouable

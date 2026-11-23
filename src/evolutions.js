@@ -705,6 +705,9 @@ export function onHitF(i, source, crit) {
     if (E.alive[i] === 0 || items === null || ITEM_VIRUS < 0 || items.getStacks(ITEM_VIRUS) === 0) return;
     // virus de l'objet, renforcé : la morsure de la nappe infecte (dot0 = le statut du Virus, items.update le décompte)
     const v = items.getValue(ITEM_VIRUS) * C.virusMul;
+    //#region e5:AH-virus-gaz
+    if (E.dotT0[i] <= 0) items.signalerInfection(i); // § E5.AH : sain → infecté (gaz et son de l'infection)
+    //#endregion e5:AH-virus-gaz
     if (E.dot0[i] < v) E.dot0[i] = v;
     if (E.dotT0[i] < C.seconds) E.dotT0[i] = C.seconds;
     N_PROCS[id]++;

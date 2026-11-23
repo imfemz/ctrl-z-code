@@ -24,6 +24,10 @@ import { ENEMIES, PALETTE, PICKUPS, PLAYER, VFX_COULEURS, VFX_ROBOTS, VFX_STYLE,
 import { GROS_BUTIN } from '../config.js'; // § E4.K : tache des gros butins, au rayon de leur échelle
 import { SAUVEGARDE_BOSS } from '../config.js'; // § E4.Q : flaque violette sous la disquette
 import { LISIBILITE_GUIDE } from '../config.js'; // § E5.P (B1) : lumière des effets alliés atténuée autour du héros
+//#region e5:AH-virus-gaz
+import { VIRUS_GAZ } from '../config.js';
+const GAZ_STYLE = VIRUS_GAZ.style; // § E5.AH : bouffées de gaz du Virus (lot TIRS) — aucune tache de lumière
+//#endregion e5:AH-virus-gaz
 import { E, P } from '../state.js';
 import * as V from '../vfx/projectiles.js';
 import { PEINT } from './reglages.js';
@@ -412,6 +416,7 @@ function lireLots() {
     const o = q * 12;
     const st = a[o + 8];
     if (st === ST.ECLAT) continue; // § E5.Y : les fragments des Éclats n'éclairent pas le sol (métal, pas de lueur)
+    if (st === GAZ_STYLE) continue; // § E5.AH : le gaz du Virus n'éclaire pas le sol
     // style RICOCHET (ricochet, tirs des sentinelles, § E2.A) : l'arme est la partie entière de la graine
     // boomerang et flacon de la nappe (§ E2.B) : la couleur de leur arme
     const w = st === ST.COMETE ? WEAPON.BLASTER : st === ST.PLOMB ? WEAPON.SHOTGUN : st === ST.RICOCHET ? Math.floor(a[o + 9]) : st === ST.BOOMERANG ? WEAPON.BOOMERANG : st === ST.FLACON ? WEAPON.POOL : WEAPON.ROCKETS;

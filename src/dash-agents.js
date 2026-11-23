@@ -11,6 +11,7 @@
 // player.js appelle depart() au front de la touche du dash et fin() quand le trajet s'achève ; update(dt) chaque image
 // de jeu. Aucune allocation par image (§ V) : tableaux typés créés ici, arguments flottants par ARGF / Q.
 import { AGENT, DASH_AGENTS as DA, DMG, DMG_SRC, ENEMY, SFX, TRAUMA, VFX_STYLE } from './config.js';
+import { DMG_ZONE } from './config.js'; // § E5.AJ : onde du bond et traînée de la glissade = zone
 import { ONDE_BOND, SOIN_BOND } from './config.js'; // § E5.F : onde du bond (ambre depuis le 22/11), soin par robot tué
 import { ARGF, E, F_DX, F_DZ, F_SX, F_SZ, F_T, F_V, F_X, F_Z, P, rand, run } from './state.js';
 import * as V from './vfx/projectiles.js';
@@ -126,7 +127,7 @@ function onde() {
       ARGF[F_V] = B.degats;
       ARGF[F_SX] = P.x;
       ARGF[F_SZ] = P.z;
-      if (ctx.damage.hitEnemyF(i, DMG_SRC.ITEM, DMG.NO_CRIT | DMG.BYPASS_SHIELD) > 0) N[3] += B.degats;
+      if (ctx.damage.hitEnemyF(i, DMG_SRC.ITEM, DMG.NO_CRIT | DMG.BYPASS_SHIELD | DMG_ZONE) > 0) N[3] += B.degats; // § E5.AJ : onde = zone
     }
     if (E.alive[i] === 0) {
       TUES[0]++; // § E5.F : robot tué par le bond (soin du Bastion)
@@ -312,7 +313,7 @@ function traineeTic(dt) {
       ARGF[F_V] = G.degats;
       ARGF[F_SX] = E.x[i];
       ARGF[F_SZ] = E.z[i];
-      if (ctx.damage.hitEnemyF(i, DMG_SRC.ITEM, DMG.NO_CRIT | DMG.NO_NUMBER | DMG.BYPASS_SHIELD | DMG.NO_IMPACT) > 0) N[1] += G.degats;
+      if (ctx.damage.hitEnemyF(i, DMG_SRC.ITEM, DMG.NO_CRIT | DMG.NO_NUMBER | DMG.BYPASS_SHIELD | DMG.NO_IMPACT | DMG_ZONE) > 0) N[1] += G.degats; // § E5.AJ : traînée au sol = zone
     }
   }
 }

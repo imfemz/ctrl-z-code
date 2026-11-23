@@ -15,6 +15,7 @@ import { REPARATEUR_VOL } from '../config.js'; // § E5.D : réticule du répara
 import { ONDE_BOND } from '../config.js'; // § E5.F : onde bleue du bond du Bastion (style ONDE_BOND.style)
 import { ECLATS } from '../config.js'; // § E5.Y : fragment des Éclats en vol (style 9)
 import { EMP_VISU } from '../config.js'; // § E5.EMP : variantes visuelles du champ EMP (rayon vide autour du héros)
+import { VIRUS_GAZ } from '../config.js'; // § E5.AH : bouffées de gaz du Virus (style VIRUS_GAZ.style, non daté)
 
 const v3 = (c) => `vec3(${c[0].toFixed(3)}, ${c[1].toFixed(3)}, ${c[2].toFixed(3)})`;
 const table = (nom, liste) =>
@@ -52,7 +53,7 @@ float vie(int st) {
 void main() {
   int st = int(iC.x + 0.5);
   float f = iC.z;
-  bool date = (st >= 10 && st < 20) || st >= 30;
+  bool date = ((st >= 10 && st < 20) || st >= 30) && st != ${VIRUS_GAZ.style}; // § E5.AH : le gaz n'est pas daté (âge relatif écrit par le CPU)
   if (date) {
     f = uTemps - iC.z; // âge
     if (f < 0.0 || f > vie(st)) {
@@ -683,6 +684,29 @@ vec4 eclatE5Y(vec2 p, float R, float L, float f, float g) {
 }
 //#endregion e5:Y-eclats
 
+//#region e5:AH-virus-gaz
+// § E5.AH : bouffée de gaz du Virus. Ruban de longueur nulle (quad carré face caméra, centre = iA.xyz) ; p en m d'écran,
+// R = rayon courant (écrit par le CPU), f = âge relatif 0..1 (NON daté : continu, écrit par le CPU), g = graine (fract)
+// + 1 si le cœur est coupé (Flashs Réduits). Contour ondulé propre à la bouffée, qui tourne lentement ; intensité qui
+// monte (fondu d'entrée) puis s'éteint UNE fois : les tons du look passent cœur → couleur → sombre → rien, aucun
+// clignotement. Corps à la teinte de l'objet (vert-jaune 0x7ee020), liseré vert profond, voile qui assombrit le fond.
+vec4 gazE5AH(vec2 p, float R, float f, float g) {
+  float sd = fract(g);
+  float sansCoeur = step(0.5, floor(g));
+  float ang = atan(p.y, p.x);
+  float w = 1.0 + 0.16 * sin(ang * 3.0 + sd * TAU + f * 2.0) + 0.09 * sin(ang * 5.0 - sd * 17.0 - f * 1.3);
+  float d = length(p) / max(R * w, 1e-4);
+  float vieI = smoothstep(0.0, 0.18, f) * (1.0 - smoothstep(0.35, 1.0, f));
+  float dedans = 1.0 - smoothstep(0.82, 1.0, d);
+  float bord = smoothstep(0.6, 0.84, d) * dedans;
+  vec3 corps = ${v3(VIRUS_GAZ.corps.map((c) => c / Math.max(...VIRUS_GAZ.corps)))};
+  vec3 col = corps * ${VIRUS_GAZ.intensite.toFixed(3)} * vieI * dedans * (1.0 - bord) + ${v3(VIRUS_GAZ.liser)} * vieI * bord;
+  float jeune = (1.0 - sansCoeur) * smoothstep(0.04, 0.12, f) * (1.0 - smoothstep(0.22, 0.38, f));
+  col += corps * ${VIRUS_GAZ.coeur.toFixed(3)} * jeune * (1.0 - smoothstep(0.16, 0.32, d));
+  return vec4(col, ${VIRUS_GAZ.voile.toFixed(3)} * dedans * vieI);
+}
+//#endregion e5:AH-virus-gaz
+
 // Croissant de la lame de phase (étape 2, § E2.A) : quad couché centré sur la bouche, axe local x = visée. R = portée,
 // arc = ouverture (rad), sens = ±1 (balayages alternés). Le fil de la lame court d'un bout de l'arc à l'autre pendant la
 // première moitié de la vie ; derrière lui, le croissant s'éteint.
@@ -819,6 +843,7 @@ vec4 effet(int st, vec2 pp, float R, float L, float f, float g) {
   else if (st == 7) c = boomerang(pp, R, g);
   else if (st == 8) c = flacon(pp, R, L, g);
   else if (st == 9) c = eclatE5Y(pp, R, L, f, g); // § E5.Y
+  else if (st == ${VIRUS_GAZ.style}) c = gazE5AH(pp, R, f, g); // § E5.AH
   else if (st == 10) c = rail(pp, R, L, f, g, vB.y, vB.z);
   else if (st == 11) c = arcEmp(pp, L, f, g);
   else if (st == 12) c = etoile(pp, R, f / ${VIE[12].toFixed(3)}, int(floor(g)), fract(g), 4.0);
@@ -858,7 +883,7 @@ void main() {
     vec2 dx = dFdx(vP), dy = dFdy(vP);
     vec2 ctr = (floor(gl_FragCoord.xy / uPix.x) + 0.5) * uPix.x - gl_FragCoord.xy;
     vec2 p0 = vP + dx * ctr.x + dy * ctr.y;
-    if (uPix.z > 0.0 && ((st >= 10 && st < 20) || st >= 30)) f = min(ceil(f / uPix.z) * uPix.z, vVie); // datés : par paliers (vers le haut : un effet bref se voit dès sa 1re image) ; jamais au-delà de sa vie (fusion du 17/11 : au-delà, pow(1 − x) d'un x > 1 rendait NaN, étalé par le bloom en gros trous bleu nuit)
+    if (uPix.z > 0.0 && ((st >= 10 && st < 20) || st >= 30) && st != ${VIRUS_GAZ.style}) f = min(ceil(f / uPix.z) * uPix.z, vVie); // datés : par paliers (vers le haut : un effet bref se voit dès sa 1re image) ; jamais au-delà de sa vie (fusion du 17/11 : au-delà, pow(1 − x) d'un x > 1 rendait NaN, étalé par le bloom en gros trous bleu nuit)
     float o = uPix.x * 0.25;
     c = max(max(effet(st, p0 + dx * o + dy * o, R, L, f, g), effet(st, p0 - dx * o + dy * o, R, L, f, g)),
             max(effet(st, p0 + dx * o - dy * o, R, L, f, g), effet(st, p0 - dx * o - dy * o, R, L, f, g)));

@@ -16,6 +16,20 @@
 // dans capsulesMonde ; rayons propres au Shinobi, TISSUS.rayonBras / rayonJambe), bassin (repère du bassin), dos (repère
 // du buste, cape_dos du .glb), KATANA porté dans le dos (capsule en monde tirée de l'os arme_katana, rayon 0 quand il
 // est caché), un couloir pour le pan devant (il reste entre les cuisses), un plan par tissu (le pan devant reste devant le bassin, le pan du dos et l'écharpe derrière), le sol.
+// DOS RÉEL (skins, tâche 2, 22/11) : avec init({ surface }) (src/anim/dos-reel.js), le pan du dos et l'écharpe quittent
+// leur plan et les capsules du bassin et de cape_dos (2 à 6 cm derrière le vrai maillage) pour la surface arrière du
+// modèle ; leur accroche est posée sur elle ; une adhérence (TISSUS.dosReel = ANIM.cape.dosReel) les presse contre le
+// dos à l'arrêt seulement. Le pan devant : voir DEVANT RÉEL ci-dessous. Revue du 22/11 : surface aux jambes LIBRES (les cuisses de l'idle
+// sont plus en avant que celles du modèle au repos) — les pièces de dos s'arrêtent sur le côté arrière RÉEL des cuisses et
+// des tibias (init({ jambes }), dos-reel.rayonsJambes) et, entre les jambes, derrière leur arrière dans la pose courante
+// (entreJambes) : jamais dans la zone du pan devant.
+// DEVANT RÉEL (fix de la fusion de 0.5.13, 22/11) : avec init({ devant }) (dos-reel : enveloppe AVANT du torse et de la
+// tête), le PAN DEVANT retrouve le plaquage de profil-corps (main b010a50) dans la même méthode : accroches posées sur le
+// ventre (TISSUS.devantReel.accroche), aucune particule dans le torse ni la tête, poussée douce vers le corps à l'arrêt
+// (TISSUS.devantReel.adherence, effacée en course comme celle du dos). Ses capsules de jambes (0,08–0,09 m + 2 cm : la
+// garde des coups de pied), son plan, son couloir et la séparation des pans (butée des pièces de dos) ne changent pas —
+// au rayon avant réel des jambes, le pan approchait l'axe de la cuisse à 5,1 cm en fente (seuil de e5-I : 5) sans rien
+// gagner au repos.
 //
 // RENDU : UN maillage pour les trois tissus (1 appel de dessin + 1 dans la carte d'ombre : autant que la cape), indexé,
 // double face, matériau de la cape (cape.creerMateriau : même programme, aucun programme de plus) ; couleurs par sommet :
@@ -29,7 +43,7 @@
 import * as THREE from 'three';
 import { TISSUS } from '../config.js';
 import { creerMateriau } from './cape.js';
-import { envelopper, profilsCorps, zProfil } from './profil-corps.js';
+import { hauteurDos, LIBRE } from './dos-reel.js';
 
 const T = TISSUS;
 const PIECES = T.pieces;
@@ -67,9 +81,27 @@ const PSO = new Float64Array(NP);
 const PPS = new Int8Array(NP); // signe du plan : +1 « z ≤ lim », −1 « z ≥ lim », 0 aucun
 const PPZ = new Float64Array(NP);
 const PFL = new Float64Array(NP); // flottement : ondes le long du tissu, ∝ vitesse de l'air (1/s)
-const PPL = new Int8Array(NP); // plaqué sur le profil : +1 dos (z ≤ profil), −1 devant (z ≥ profil), 0 non
-const PEC = new Float64Array(NP); // écart au profil au repos et aux accroches (m)
-const PAD = new Float64Array(NP * 3); // adhérence (m/s², repère de l'os du tissu)
+// dos réel (skins, tâche 2 ; src/anim/dos-reel.js) : pièces de dos (plan.signe +1 : pan du dos, écharpe) posées sur la
+// surface du modèle quand init en reçoit une — DOSR[k] = 1 (Int8) et GK[k] = 1 (Float64, gain de l'adhérence) ; HR[k] =
+// demi-écart entre deux rangées (m) ; DRT = marge, adhérence (m/s²), vitesse (m/s), tau (s) ; QT = échange avec
+// hauteurDos ; HV = accélération d'adhérence de l'image par repère (0 bassin, 1 buste) ; ADGT[0] = adhérence posée à l'init
+const DOSR = new Int8Array(NP);
+const GK = new Float64Array(NP);
+const HR = new Float64Array(PIECES.map((p) => (T.dosReel.fenetre * p.longueur) / (p.rows - 2) / 2));
+const DRT = new Float64Array([T.dosReel.marge, T.dosReel.adherence, T.dosReel.vitesse, T.dosReel.tau]);
+const QT = new Float64Array(4);
+const HV = new Float64Array(6);
+const ADGT = new Float64Array(1);
+// devant réel (pan devant) : DEVR[k] = 1 quand init reçoit la surface avant ; DVT = adhérence du pan devant /
+// adhérence du dos, écart des accroches au ventre (m)
+const DEVR = new Int8Array(NP);
+const DVT = new Float64Array(T.devantReel ? [DRT[1] > 0 ? T.devantReel.adherence / DRT[1] : 0, T.devantReel.accroche] : [0, 0]);
+let surfV = null;
+// jambes RÉELLES pour les pièces de dos (revue du 22/11) : rayon mesuré sur le maillage des capsules cuisse g, d, tibia
+// g, d (dos-reel.rayonsJambes), 0 = rayon du config ; les capsules du config (rayonCuisse 0,08, rayonTibia 0,09) gardent
+// 2 cm de garde pour le pan DEVANT (coups de pied) : le pan du dos et l'écharpe, eux, s'arrêtent sur la vraie jambe
+const JRD = new Float64Array(9); // indice = capsule (NLOC + 2 … NLOC + 5)
+let surf = null;
 for (let k = 0; k < NP; k++) {
   const p = PIECES[k];
   PF[k] = p.os === 'buste' ? 1 : 0;
@@ -80,25 +112,7 @@ for (let k = 0; k < NP; k++) {
   PPS[k] = p.plan ? p.plan.signe : 0;
   PPZ[k] = p.plan ? p.plan.z : 0;
   PFL[k] = p.flottement || 0;
-  PPL[k] = p.plaquer === 'dos' ? 1 : p.plaquer === 'devant' ? -1 : 0;
-  PEC[k] = p.ecart || 0;
-  const ad = p.adherence || [0, 0, 0];
-  PAD[k * 3] = ad[0];
-  PAD[k * 3 + 1] = ad[1];
-  PAD[k * 3 + 2] = ad[2];
 }
-// profils du corps (src/anim/profil-corps.js, retour de Femz du 22/11 : écart entre les tissus et le corps) : dos et
-// devant du torse relevés sur le .glb ; quand ils existent, ils REMPLACENT les capsules du bassin et du dos (qui tenaient
-// le pan du dos à 4–5 cm des fesses et des hanches)
-let PROFD = null;
-let PROFV = null;
-const ADH = new Float64Array([1]); // [0] : part de l'adhérence : 1 à l'arrêt, 0 dès que le bassin va plus vite que TISSUS.adherenceVmax (lissée)
-const MAILLE = [0, 0]; // demi-écart le plus grand entre deux colonnes, entre deux rangées (m), des tissus plaqués
-for (const p of PIECES)
-  if (p.plaquer) {
-    MAILLE[0] = Math.max(MAILLE[0], Math.max(p.largeurHaut, p.largeurBas) / (p.cols - 1) / 2);
-    MAILLE[1] = Math.max(MAILLE[1], p.longueur / (p.rows - 2) / 2);
-  }
 
 // contraintes
 const MAXC = N * 8;
@@ -248,7 +262,8 @@ const TOTAL = 3;
 const ALPHA = 4;
 const DALPHA = 5; // durée d'un sous-pas en part de l'image (H / dt)
 const AMID = 6; // instant du milieu du sous-pas
-const S = new Float64Array(7);
+const ADH = 7; // adhérence au dos de l'image (0..1 : 1 à l'arrêt, 0 au-delà de dosReel.vitesse), lissée
+const S = new Float64Array(8);
 /** [0] dt simulé de l'image. */
 export const entree = new Float64Array(1);
 const st = { pret: false, visible: true };
@@ -296,10 +311,16 @@ const norm3 = (v) => {
 };
 
 /** Disposition de repos, contraintes, capsules. dos : { a, b, rayon } (cape_dos du .glb) ou null. Hors combat. */
-function disposer(dos) {
+function disposer(dos, surface, devant) {
   nC = 0;
+  surf = surface;
+  surfV = surface !== null ? devant : null;
+  ADGT[0] = surface !== null ? DRT[1] : 0;
   for (let k = 0; k < NP; k++) {
     const p = PIECES[k];
+    DOSR[k] = surface !== null && p.plan && p.plan.signe > 0 ? 1 : 0;
+    DEVR[k] = surfV !== null && p.plan && p.plan.signe < 0 ? 1 : 0;
+    GK[k] = DOSR[k] - DVT[0] * DEVR[k]; // pan devant : adhérence vers l'ARRIÈRE du bassin (vers le ventre et les cuisses)
     const nx = PNX[k];
     const ny = PNY[k];
     const tip = ny - 1;
@@ -317,17 +338,6 @@ function disposer(dos) {
         rest[i * 3] = p.haut[0] + cote[0] * l + bas[0] * d;
         rest[i * 3 + 1] = p.haut[1] + cote[1] * l + bas[1] * d;
         rest[i * 3 + 2] = p.haut[2] + cote[2] * l + bas[2] * d;
-        // plaqué : accroches posées sur le profil (à l'écart près), repos jamais dans le corps
-        const pf = PPL[k] === 1 ? PROFD : PPL[k] === -1 ? PROFV : null;
-        if (pf !== null) {
-          const zp = zProfil(pf, rest[i * 3], rest[i * 3 + 1], PPL[k] === 1);
-          if (!Number.isNaN(zp)) {
-            const lim = zp - PPL[k] * PEC[k];
-            if (r === 0) rest[i * 3 + 2] = lim;
-            else if (PPL[k] === 1) rest[i * 3 + 2] = Math.min(rest[i * 3 + 2], lim);
-            else rest[i * 3 + 2] = Math.max(rest[i * 3 + 2], lim);
-          }
-        }
         invM[i] = r === 0 ? 0 : 1;
         rowOf[i] = r;
         colOf[i] = c;
@@ -349,6 +359,30 @@ function disposer(dos) {
       pieceOf[i] = k;
       tipOf[i] = 1;
     }
+    if (DOSR[k] === 1) {
+      // dos réel : la pièce entière glisse le long de z jusqu'à ce que son accroche touche la surface (moins la marge) —
+      // forme et longueurs inchangées ; l'accroche du config était 2 à 2,5 cm derrière le vrai dos
+      QT[0] = p.haut[0];
+      QT[1] = p.haut[1];
+      QT[3] = HR[k];
+      hauteurDos(surface, QT);
+      const dz = QT[2] - DRT[0] - p.haut[2];
+      for (let i = o; i < o + nx * ny; i++) rest[i * 3 + 2] += dz;
+    }
+    if (DEVR[k] === 1)
+      // devant réel : chaque COLONNE glisse le long de z jusqu'à ce que son accroche soit à devantReel.accroche du ventre
+      // (surface rangée en −z : devant du corps = −QT[2] ; lue au point même de l'accroche, comme profil-corps posait
+      // les siennes) — longueurs des colonnes inchangées ; hors du torse (LIBRE), la colonne ne bouge pas
+      for (let c = 0; c < nx; c++) {
+        const a = o + c;
+        QT[0] = rest[a * 3];
+        QT[1] = rest[a * 3 + 1];
+        QT[3] = 0;
+        hauteurDos(surfV, QT);
+        if (!(QT[2] < LIBRE * 0.5)) continue;
+        const dz = -QT[2] + DVT[1] - rest[a * 3 + 2];
+        for (let r = 0; r < ny; r++) rest[(a + r * nx) * 3 + 2] += dz;
+      }
     const id = (r, c) => o + r * nx + c;
     for (let r = 0; r < tip; r++)
       for (let c = 0; c < nx; c++) {
@@ -384,12 +418,19 @@ function disposer(dos) {
 }
 
 /** Crée (une fois) le maillage des trois tissus ; rappelable au changement de modèle (hors combat). */
-export function init({ scene, dos = null, material = null, corps = null }) {
-  const pr = profilsCorps(corps);
-  // enveloppes à la demi-maille la plus large des tissus plaqués (leurs triangles ne coupent pas les bosses du torse)
-  PROFD = pr ? envelopper(pr.dos, MAILLE[0], MAILLE[1], -1) : null;
-  PROFV = pr ? envelopper(pr.devant, MAILLE[0], MAILLE[1], 1) : null;
-  disposer(dos);
+export function init({ scene, dos = null, material = null, surface = null, jambes = null, katana = null, devant = null }) {
+  disposer(dos, surface, devant);
+  // katana du dos relu sur le modèle (dos-reel.axeKatana) ; TISSUS.katana seulement sans pièce arme_katana
+  const K = katana || T.katana;
+  for (let i = 0; i < 3; i++) {
+    KAT[i] = K.a[i];
+    KAT[3 + i] = K.b[i];
+  }
+  RAYON_DYN[6] = K.rayon;
+  KATANA_UTILISE.set(KAT);
+  KATANA_UTILISE[6] = K.rayon;
+  JRD.fill(0);
+  if (surface !== null && jambes) for (let j = 0; j < 4; j++) JRD[NLOC + 2 + j] = jambes[j];
   if (mesh !== null) {
     if (mesh.parent !== scene) scene.add(mesh);
     mesh.visible = false;
@@ -477,7 +518,9 @@ function xf(M, mo, src, si, dst, di) {
   dst[di + 2] = M[mo + 2] * x + M[mo + 6] * y + M[mo + 10] * z + M[mo + 14];
 }
 
-const KAT = new Float64Array([...T.katana.a, ...T.katana.b]); // axe du katana du dos (repère du modèle)
+const KAT = new Float64Array([...T.katana.a, ...T.katana.b]); // axe du katana du dos (repère du modèle) ; réécrit à init() depuis le modèle
+/** Capsule du katana réellement utilisée (a, b, rayon ; repère du modèle) : lue par les tests. */
+export const KATANA_UTILISE = new Float64Array(7);
 /**
  * Repères de l'image, avant reset() / update() : eCorps = matrixWorld.elements de l'os du bassin, piv = son pivot
  * (repère du modèle, Float64Array(3)) ; eKatana = matrice d'un repère où l'axe du katana (TISSUS.katana, repère du
@@ -528,6 +571,7 @@ export function reset(Mb) {
   S[ACC] = 0;
   S[TOTAL] = 0;
   S[TIME] = 0;
+  S[ADH] = 1;
   normales();
 }
 
@@ -565,51 +609,22 @@ function normales() {
 // désoptimisé « pour OSR » dans Chromium — mesuré au --trace-deopt — et, interprété, il emballait ses flottants)
 function collisions() {
   plans();
-  if (PROFD !== null) profils();
+  if (surf !== null) {
+    dosReel();
+    entreJambes();
+    butee();
+  }
+  if (surfV !== null) devantReel();
   couloirs();
   capsules();
   sol();
-}
-
-function profils() {
-  // profil du torse dans le repère de l'os de chaque tissu plaqué : coordonnées locales par les colonnes de MI, z borné
-  // (dos : z ≤ profil − marge ; devant : z ≥ profil + marge, seulement à hauteur du torse) ; ramené le long de l'axe z
-  const mg = T.margeCorps;
-  for (let k = 0; k < NP; k++) {
-    const sg = PPL[k];
-    if (sg === 0) continue;
-    const pf = sg === 1 ? PROFD : PROFV;
-    const mo = PF[k] * 16;
-    const c0 = MI[mo] * MI[mo] + MI[mo + 1] * MI[mo + 1] + MI[mo + 2] * MI[mo + 2];
-    const c1 = MI[mo + 4] * MI[mo + 4] + MI[mo + 5] * MI[mo + 5] + MI[mo + 6] * MI[mo + 6];
-    const c2 = MI[mo + 8] * MI[mo + 8] + MI[mo + 9] * MI[mo + 9] + MI[mo + 10] * MI[mo + 10];
-    const a = P0[k] + PNX[k];
-    const b = P0[k] + PNX[k] * PNY[k];
-    for (let p = a; p < b; p++) {
-      const i = p * 3;
-      const px = pos[i] - MI[mo + 12];
-      const py = pos[i + 1] - MI[mo + 13];
-      const pz = pos[i + 2] - MI[mo + 14];
-      const lx = (px * MI[mo] + py * MI[mo + 1] + pz * MI[mo + 2]) / c0;
-      const ly = (px * MI[mo + 4] + py * MI[mo + 5] + pz * MI[mo + 6]) / c1;
-      const lz = (px * MI[mo + 8] + py * MI[mo + 9] + pz * MI[mo + 10]) / c2;
-      const zp = zProfil(pf, lx, ly, sg === 1);
-      if (zp !== zp) continue; // NaN : hors du torse
-      const d = (lz - (zp - sg * mg)) * sg;
-      if (d > 0) {
-        pos[i] -= MI[mo + 8] * d * sg;
-        pos[i + 1] -= MI[mo + 9] * d * sg;
-        pos[i + 2] -= MI[mo + 10] * d * sg;
-      }
-    }
-  }
 }
 
 function plans() {
   // plan de chaque tissu, dans le repère de son os (axe z du modèle = l'avant)
   for (let k = 0; k < NP; k++) {
     const sg = PPS[k];
-    if (sg === 0) continue;
+    if (sg === 0 || DOSR[k] === 1) continue; // pièce de dos : la surface du dos réel remplace son plan
     const mo = PF[k] * 16;
     const zx = MI[mo + 8];
     const zy = MI[mo + 9];
@@ -632,6 +647,187 @@ function plans() {
         pos[i + 1] -= ny * d;
         pos[i + 2] -= nz * d;
       }
+    }
+  }
+}
+
+/**
+ * Dos réel : pour les pièces de dos, dans le repère de leur os, aucune particule libre devant la surface du dos moins la
+ * marge ; au-delà, ramenée le long de l'axe avant de l'os (position seule, comme le plan qu'elle remplace).
+ */
+function dosReel() {
+  for (let k = 0; k < NP; k++) {
+    if (DOSR[k] === 0) continue;
+    const mo = PF[k] * 16;
+    const sx = Math.sqrt(MI[mo] * MI[mo] + MI[mo + 1] * MI[mo + 1] + MI[mo + 2] * MI[mo + 2]) + 1e-12;
+    const sy = Math.sqrt(MI[mo + 4] * MI[mo + 4] + MI[mo + 5] * MI[mo + 5] + MI[mo + 6] * MI[mo + 6]) + 1e-12;
+    const sz = Math.sqrt(MI[mo + 8] * MI[mo + 8] + MI[mo + 9] * MI[mo + 9] + MI[mo + 10] * MI[mo + 10]) + 1e-12;
+    const ox = MI[mo + 12];
+    const oy = MI[mo + 13];
+    const oz = MI[mo + 14];
+    QT[3] = HR[k];
+    const a = P0[k] + PNX[k];
+    const b = P0[k] + PNX[k] * PNY[k];
+    for (let p = a; p < b; p++) {
+      const i = p * 3;
+      const px = pos[i] - ox;
+      const py = pos[i + 1] - oy;
+      const pz = pos[i + 2] - oz;
+      QT[0] = (px * MI[mo] + py * MI[mo + 1] + pz * MI[mo + 2]) / (sx * sx);
+      QT[1] = (px * MI[mo + 4] + py * MI[mo + 5] + pz * MI[mo + 6]) / (sy * sy);
+      const zl = (px * MI[mo + 8] + py * MI[mo + 9] + pz * MI[mo + 10]) / (sz * sz);
+      hauteurDos(surf, QT);
+      const d = zl - QT[2] + DRT[0];
+      if (d > 0) {
+        const f = d / sz;
+        pos[i] -= MI[mo + 8] * f;
+        pos[i + 1] -= MI[mo + 9] * f;
+        pos[i + 2] -= MI[mo + 10] * f;
+      }
+    }
+  }
+}
+
+/**
+ * Devant réel : pour le pan devant, dans le repère de son os (bassin), aucune particule libre DANS le torse ou la tête :
+ * z ≥ devant du corps + marge (surface rangée en −z, lue par hauteurDos comme celle du dos) ; ramenée le long de l'axe
+ * avant. Cases LIBRES (sous l'entrejambe, sur les jambes) : rien — les capsules des jambes tiennent le pan.
+ */
+function devantReel() {
+  for (let k = 0; k < NP; k++) {
+    if (DEVR[k] === 0) continue;
+    const mo = PF[k] * 16;
+    const sx = Math.sqrt(MI[mo] * MI[mo] + MI[mo + 1] * MI[mo + 1] + MI[mo + 2] * MI[mo + 2]) + 1e-12;
+    const sy = Math.sqrt(MI[mo + 4] * MI[mo + 4] + MI[mo + 5] * MI[mo + 5] + MI[mo + 6] * MI[mo + 6]) + 1e-12;
+    const sz = Math.sqrt(MI[mo + 8] * MI[mo + 8] + MI[mo + 9] * MI[mo + 9] + MI[mo + 10] * MI[mo + 10]) + 1e-12;
+    const ox = MI[mo + 12];
+    const oy = MI[mo + 13];
+    const oz = MI[mo + 14];
+    QT[3] = HR[k];
+    const a = P0[k] + PNX[k];
+    const b = P0[k] + PNX[k] * PNY[k];
+    for (let p = a; p < b; p++) {
+      const i = p * 3;
+      const px = pos[i] - ox;
+      const py = pos[i + 1] - oy;
+      const pz = pos[i + 2] - oz;
+      QT[0] = (px * MI[mo] + py * MI[mo + 1] + pz * MI[mo + 2]) / (sx * sx);
+      QT[1] = (px * MI[mo + 4] + py * MI[mo + 5] + pz * MI[mo + 6]) / (sy * sy);
+      const zl = (px * MI[mo + 8] + py * MI[mo + 9] + pz * MI[mo + 10]) / (sz * sz);
+      hauteurDos(surfV, QT);
+      const d = -zl - QT[2] + DRT[0]; // −z de la particule devant −z du corps (moins la marge) : dans le torse
+      if (d > 0) {
+        const f = d / sz;
+        pos[i] += MI[mo + 8] * f;
+        pos[i + 1] += MI[mo + 9] * f;
+        pos[i + 2] += MI[mo + 10] * f;
+      }
+    }
+  }
+}
+
+// jambes dans le repère d'un os (bassin ou buste) au sous-pas courant (entreJambes) : cuisse g, d, tibia g, d → a(3), b(3)
+const JL = new Float64Array(24);
+/**
+ * Entre les jambes (pièces de dos, surface aux jambes libres) : une particule dont le x (repère du bassin) tombe entre les
+ * axes des deux jambes, à une hauteur couverte par elles, reste derrière l'arrière de la jambe la plus en arrière à cette
+ * hauteur (axe − rayon réel − marge) — le pan du dos ne passe jamais entre les jambes ni dans la zone du pan devant ;
+ * jambes lues dans la pose COURANTE (capsules des cuisses et des tibias), pas figées au repos du modèle.
+ */
+function entreJambes() {
+  if (!(capW[(NLOC + 2) * 7 + 6] > 0) || !(capW[(NLOC + 3) * 7 + 6] > 0)) return;
+  for (let f = 0; f < 2; f++) {
+    const mo = f * 16;
+    const sx = Math.sqrt(MI[mo] * MI[mo] + MI[mo + 1] * MI[mo + 1] + MI[mo + 2] * MI[mo + 2]) + 1e-12;
+    const sy = Math.sqrt(MI[mo + 4] * MI[mo + 4] + MI[mo + 5] * MI[mo + 5] + MI[mo + 6] * MI[mo + 6]) + 1e-12;
+    const sz = Math.sqrt(MI[mo + 8] * MI[mo + 8] + MI[mo + 9] * MI[mo + 9] + MI[mo + 10] * MI[mo + 10]) + 1e-12;
+    const ox = MI[mo + 12];
+    const oy = MI[mo + 13];
+    const oz = MI[mo + 14];
+    for (let j = 0; j < 4; j++) {
+      const o = (NLOC + 2 + j) * 7;
+      for (let e = 0; e < 2; e++) {
+        const px = capW[o + e * 3] - ox;
+        const py = capW[o + e * 3 + 1] - oy;
+        const pz = capW[o + e * 3 + 2] - oz;
+        JL[j * 6 + e * 3] = (px * MI[mo] + py * MI[mo + 1] + pz * MI[mo + 2]) / (sx * sx);
+        JL[j * 6 + e * 3 + 1] = (px * MI[mo + 4] + py * MI[mo + 5] + pz * MI[mo + 6]) / (sy * sy);
+        JL[j * 6 + e * 3 + 2] = (px * MI[mo + 8] + py * MI[mo + 9] + pz * MI[mo + 10]) / (sz * sz);
+      }
+    }
+    for (let k = 0; k < NP; k++) {
+      if (DOSR[k] === 0 || PF[k] !== f) continue;
+      const a = P0[k] + PNX[k];
+      const b = P0[k] + PNX[k] * PNY[k];
+      for (let p = a; p < b; p++) {
+        const i = p * 3;
+        const px = pos[i] - ox;
+        const py = pos[i + 1] - oy;
+        const pz = pos[i + 2] - oz;
+        const x = (px * MI[mo] + py * MI[mo + 1] + pz * MI[mo + 2]) / (sx * sx);
+        const y = (px * MI[mo + 4] + py * MI[mo + 5] + pz * MI[mo + 6]) / (sy * sy);
+        const z = (px * MI[mo + 8] + py * MI[mo + 9] + pz * MI[mo + 10]) / (sz * sz);
+        // jambe s (0 g, 1 d) à la hauteur y : cuisse au-dessus du genou, tibia en dessous ; hors des deux : rien
+        KJ[0] = 0;
+        for (let s = 0; s < 2; s++) {
+          const c = y >= JL[s * 6 + 4] ? s : 2 + s; // b de la cuisse = genou
+          const ay = JL[c * 6 + 1];
+          const dyc = JL[c * 6 + 4] - ay;
+          let u = (y - ay) / (Math.abs(dyc) > 1e-6 ? dyc : 1e-6);
+          if (u < -0.05 || u > 1.05) continue;
+          u = (Math.abs(u) - Math.abs(u - 1) + 1) * 0.5;
+          const r = JRD[NLOC + 2 + c] > 0 ? JRD[NLOC + 2 + c] : RAYON_DYN[2 + c];
+          KJ[1 + s] = JL[c * 6] + (JL[c * 6 + 3] - JL[c * 6]) * u; // x de l'axe
+          KJ[3 + s] = JL[c * 6 + 2] + (JL[c * 6 + 5] - JL[c * 6 + 2]) * u - r; // arrière de la jambe
+          KJ[0] += 1;
+        }
+        if (KJ[0] < 2) continue;
+        const xmin = KJ[1] < KJ[2] ? KJ[1] : KJ[2];
+        const xmax = KJ[1] < KJ[2] ? KJ[2] : KJ[1];
+        if (x <= xmin || x >= xmax) continue;
+        const d = z - (KJ[3] < KJ[4] ? KJ[3] : KJ[4]) + DRT[0];
+        if (d > 0) {
+          const g = d / sz;
+          pos[i] -= MI[mo + 8] * g;
+          pos[i + 1] -= MI[mo + 9] * g;
+          pos[i + 2] -= MI[mo + 10] * g;
+        }
+      }
+    }
+  }
+}
+const KJ = new Float64Array(5); // jambes à la hauteur d'une particule : nombre, x des axes g, d, arrière g, d
+
+// Butée du pan devant (2e revue du 22/11) : entreJambes ne borne rien quand une jambe ne couvre pas la hauteur de la
+// particule (fente, cuisse levée presque à l'horizontale) et suit l'arrière des jambes quand elles passent toutes deux
+// devant. Butée INDÉPENDANTE des jambes, dans le repère du BASSIN, pour toutes les pièces de dos : sous l'accroche du pan
+// devant (y < haut.y) et dans son couloir élargi de la marge (|x| ≤ couloir + marge), z ≤ plan du pan devant − marge.
+// BUT = [active (1/0), demi-largeur, z max, y max], tirée de la pièce « pan » de TISSUS (aucune valeur à part).
+const PAN = PIECES.find((p) => p.couloir && p.plan && p.plan.signe < 0);
+const BUT = new Float64Array(PAN ? [1, PAN.couloir + T.marge, PAN.plan.z - T.marge, PAN.haut[1]] : [0, 0, 0, 0]);
+function butee() {
+  if (BUT[0] === 0) return;
+  const sx = Math.sqrt(MI[0] * MI[0] + MI[1] * MI[1] + MI[2] * MI[2]) + 1e-12;
+  const sy = Math.sqrt(MI[4] * MI[4] + MI[5] * MI[5] + MI[6] * MI[6]) + 1e-12;
+  const sz = Math.sqrt(MI[8] * MI[8] + MI[9] * MI[9] + MI[10] * MI[10]) + 1e-12;
+  const ox = MI[12];
+  const oy = MI[13];
+  const oz = MI[14];
+  for (let p = 0; p < N; p++) {
+    if (invM[p] === 0 || DOSR[pieceOf[p]] === 0) continue;
+    const i = p * 3;
+    const px = pos[i] - ox;
+    const py = pos[i + 1] - oy;
+    const pz = pos[i + 2] - oz;
+    const x = (px * MI[0] + py * MI[1] + pz * MI[2]) / (sx * sx);
+    const y = (px * MI[4] + py * MI[5] + pz * MI[6]) / (sy * sy);
+    if (y >= BUT[3] || x > BUT[1] || x < -BUT[1]) continue;
+    const d = (px * MI[8] + py * MI[9] + pz * MI[10]) / (sz * sz) - BUT[2];
+    if (d > 0) {
+      const g = d / sz;
+      pos[i] -= MI[8] * g;
+      pos[i + 1] -= MI[9] * g;
+      pos[i + 2] -= MI[10] * g;
     }
   }
 }
@@ -689,7 +885,7 @@ function capsules() {
   }
   for (let k = 0; k < NCAP; k++) {
     const o = k * 7;
-    if (!(capW[o + 6] > 0) || (k < NLOC && PROFD !== null)) continue; // bassin et dos : remplacés par les profils
+    if (!(capW[o + 6] > 0)) continue;
     const ax = capW[o];
     const ay = capW[o + 1];
     const az = capW[o + 2];
@@ -729,6 +925,7 @@ function capsules() {
     }
     for (let p = 0; p < N; p++) {
       if (invM[p] === 0) continue;
+      if (k < NLOC && DOSR[pieceOf[p]] === 1) continue; // bassin et cape_dos : remplacés par le dos réel
       const i = p * 3;
       const px = pos[i] - ax;
       const py = pos[i + 1] - ay;
@@ -741,9 +938,11 @@ function capsules() {
       const dy = py - by * t;
       const dz = pz - bz * t;
       const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < r2) {
+      const jr = JRD[k] * DOSR[pieceOf[p]]; // pièce de dos sur une jambe mesurée : la vraie jambe + marge du dos réel
+      const rq = jr > 0 ? jr + DRT[0] : rr;
+      if (d2 < rq * rq) {
         const d = Math.sqrt(d2) + 1e-9;
-        const f = (rr - d) / d;
+        const f = (rq - d) / d;
         pos[i] += dx * f;
         pos[i + 1] += dy * f;
         pos[i + 2] += dz * f;
@@ -812,9 +1011,12 @@ function dessus() {
       const dy = qy - by * u;
       const dz = qz - bz * u;
       const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < r2) {
+      // pièce de dos sur une jambe mesurée : la vraie jambe + la marge du dos réel
+      const jr = JRD[KI[0]] * DOSR[pieceOf[p]];
+      const rq = jr > 0 ? jr + DRT[0] : rr;
+      if (d2 < rq * rq) {
         const d = Math.sqrt(d2) + 1e-9;
-        const f = (rr - d) / d;
+        const f = (rq - d) / d;
         pos[i] += dx * f;
         pos[i + 1] += dy * f;
         pos[i + 2] += dz * f;
@@ -856,6 +1058,15 @@ function capsDyn(ia) {
 function sousPas() {
   interpoler(0);
   interpoler(1);
+  // adhérence (dos réel, à l'arrêt) : le long de l'avant de chaque repère (axe z de MI normalisé)
+  for (let f = 0; f < 2; f++) {
+    const mo = f * 16;
+    const l = Math.sqrt(MI[mo + 8] * MI[mo + 8] + MI[mo + 9] * MI[mo + 9] + MI[mo + 10] * MI[mo + 10]) + 1e-12;
+    const g = (ADGT[0] * S[ADH]) / l;
+    HV[f * 3] = MI[mo + 8] * g;
+    HV[f * 3 + 1] = MI[mo + 9] * g;
+    HV[f * 3 + 2] = MI[mo + 10] * g;
+  }
   for (let k = 0; k < NLOC; k++) {
     const mo = capFrame[k] * 16;
     xf(MI, mo, capLocal, k * 7, capW, k * 7);
@@ -903,15 +1114,11 @@ function sousPas() {
     // flottement : en course et au dash, des ondes courent le long du tissu (pas une planche rigide dans le vent)
     const vit = Math.sqrt(rx * rx + ry * ry + rz * rz);
     const fl = PFL[k] * vit * Math.sin(wf * t - 1.15 * r + 0.8 * c + ph);
-    // adhérence (profils présents) : poussée vers le corps, repère de l'os du tissu (colonnes de MI / échelle)
-    const mo = PF[k] * 16;
-    const ea = PROFD !== null ? ADH[0] / (Math.sqrt(MI[mo] * MI[mo] + MI[mo + 1] * MI[mo + 1] + MI[mo + 2] * MI[mo + 2]) + 1e-12) : 0;
-    const dx = (PAD[k * 3] * MI[mo] + PAD[k * 3 + 1] * MI[mo + 4] + PAD[k * 3 + 2] * MI[mo + 8]) * ea;
-    const dy = (PAD[k * 3] * MI[mo + 1] + PAD[k * 3 + 1] * MI[mo + 5] + PAD[k * 3 + 2] * MI[mo + 9]) * ea;
-    const dz = (PAD[k * 3] * MI[mo + 2] + PAD[k * 3 + 1] * MI[mo + 6] + PAD[k * 3 + 2] * MI[mo + 10]) * ea;
-    const ax = (-kN * vn * nx - kT * rx) * tip + fl * nx + dx;
-    const ay = (-kN * vn * ny - kT * ry) * tip - PG[k] + fl * ny + dy;
-    const az = (-kN * vn * nz - kT * rz) * tip + fl * nz + dz;
+    const hv = PF[k] * 3;
+    const gk = GK[k];
+    const ax = (-kN * vn * nx - kT * rx) * tip + fl * nx + HV[hv] * gk;
+    const ay = (-kN * vn * ny - kT * ry) * tip - PG[k] + fl * ny + HV[hv + 1] * gk;
+    const az = (-kN * vn * nz - kT * rz) * tip + fl * nz + HV[hv + 2] * gk;
     const x = pos[i];
     const y = pos[i + 1];
     const z = pos[i + 2];
@@ -971,15 +1178,12 @@ export function update(Mb) {
   }
   S[STEPS] = 0;
   if (!(dt > 0)) return;
-  {
-    // adhérence : seulement à l'arrêt et au pas (en course, un bras ou une jambe qui passe derrière doit pouvoir écarter
-    // le tissu ; plaqué, il restait coincé contre le membre)
-    const bx = M1[12] - M0[12];
-    const bz = M1[14] - M0[14];
-    let f = 1 - Math.sqrt(bx * bx + bz * bz) / dt / T.adherenceVmax;
-    f = f < 0 ? 0 : f;
-    ADH[0] += (f - ADH[0]) * Math.min(1, dt * 8); // tableau typé : un `let` de module allouait un nombre à chaque écriture
-  }
+  // adhérence : 1 à l'arrêt, 0 dès dosReel.vitesse (vitesse horizontale du buste) ; tombe aussitôt, revient en tau s
+  const v = Math.sqrt(jx * jx + jz * jz) / dt;
+  const cible = 1 - v / DRT[2];
+  const c0 = (Math.abs(cible) - Math.abs(cible - 1) + 1) * 0.5;
+  if (c0 < S[ADH]) S[ADH] = c0;
+  else S[ADH] += (c0 - S[ADH]) * (1 - Math.exp(-dt / DRT[3]));
   decompose(M0, 0, D0, 0);
   decompose(M0, 16, D0, 10);
   decompose(M1, 0, D1, 0);

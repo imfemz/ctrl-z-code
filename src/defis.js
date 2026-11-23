@@ -1,4 +1,4 @@
-// PLAN ADDICTIF, ÉTAPE 4, CHANTIER A : defis.js — compteurs de la partie et les 20 succès (ARCHITECTURE.md § E4.A.4).
+// PLAN ADDICTIF, ÉTAPE 4, CHANTIER A : defis.js — compteurs de la partie et les 21 succès (ARCHITECTURE.md § E4.A.4).
 // En combat, rien n'est alloué : compteurs dans des tableaux typés créés à l'import, branchements d'une ligne (entiers
 // seulement) dans damage, enemies, weapons, items et progression ; conditions codées par des entiers (DEFI_COND) dans
 // des Int32Array remplies à l'init, testées toutes les DEFIS.periode s par tick(dt) (main, en PLAYING). Un succès réussi
@@ -6,7 +6,7 @@
 // de partie, pagehide), par meta.grantSucces puis meta.flush.
 import {
   AGENTS, DEFIS, DEFI_COND, DEFI_COUNT, DEFI_RECOMP, EFLAG, ENEMY, ENEMY_COUNT, EVOLUTIONS, FUSIONS, ITEM_COUNT, ITEMS,
-  UTILITIES, WEAPONS, WEAPON_COUNT, WEAPON_KEYS, ITEM_KEYS, bossRank,
+  UTILITIES, WEAPONS, WEAPON_COUNT, WEAPON_KEYS, ITEM_KEYS, bossRank, skinNom,
 } from './config.js';
 import { P, run } from './state.js';
 import * as meta from './meta.js';
@@ -59,13 +59,17 @@ export function rewardName(key) {
   }
   if (kind === 'evo') return (EVOLUTIONS.find((e) => e.key === k) || { name: k }).name;
   if (kind === 'fusion') return (FUSIONS.find((f) => f.key === k) || { name: k }).name;
+  if (kind === 'skin') {
+    const j = k.indexOf(':');
+    return skinNom(k.slice(0, j), k.slice(j + 1));
+  }
   return k;
 }
 
 /** Ligne de récompense de la notification (« Agent débloqué : Bastion », « En vente : Berserk »…). Hors combat. */
 export function rewardText(s) {
   const D = DEFIS.list[s];
-  const pre = D.sorte === DEFI_RECOMP.DEBLOQUE && D.reward.startsWith('agent:') ? 'Agent débloqué : ' : DEFIS.rewardPrefix[D.sorte];
+  const pre = D.sorte === DEFI_RECOMP.DEBLOQUE && D.reward.startsWith('agent:') ? 'Agent débloqué : ' : D.reward.startsWith('skin:') ? 'Skin débloqué : ' : DEFIS.rewardPrefix[D.sorte];
   return pre + rewardName(D.reward);
 }
 
@@ -283,7 +287,9 @@ export function debugForce(s) {
       for (let w = 0; w < WEAPON_COUNT && armesEnMain() < n; w++) if (ctx.weapons.owned[w] === 0) ctx.weapons.unlock(w);
       break;
     case DEFI_COND.OBJETS_EN_MAIN:
-      for (let i = 0; i < ITEM_COUNT && objetsEnMain() < n; i++) if (ctx.items.getStacks(i) === 0) ctx.items.add(i, 1);
+      //#region e5:AL-retrait-cryogel
+      for (let i = 0; i < ITEM_COUNT && objetsEnMain() < n; i++) if (ctx.items.getStacks(i) === 0 && ITEMS[i].retire !== true) ctx.items.add(i, 1); // jamais le Cryogel (retiré)
+      //#endregion e5:AL-retrait-cryogel
       break;
     case DEFI_COND.PV_BAS:
       lowHp[0] = Math.max(lowHp[0], n);

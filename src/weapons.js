@@ -119,7 +119,15 @@ const shots = new Int32Array(WEAPON_COUNT); // déclenchements depuis le reset
 // t += dt × cadence ; tire tant que t ≥ 1 (LOOP.maxShotsPerFrame par image au plus). Exporté (lecture seule) : pré-visée
 // des bras du héros (src/anim/armes-heros.js).
 export const fireAcc = new Float32Array(WEAPON_COUNT);
-const flagsOf = new Uint8Array(WEAPON_COUNT); // drapeaux DMG.* que chaque arme passe à hitEnemy (§ I.2), préparés à l'init
+const flagsOf = new Uint16Array(WEAPON_COUNT); // drapeaux DMG.* que chaque arme passe à hitEnemy (§ I.2), préparés à l'init (§ E5.AJ : 16 bits, DMG_ZONE = 512)
+//#region e5:AJ-equilibrage-aoe
+// § E5.AJ : armes de zone (AOE.armesZone) — drapeau DMG_ZONE sur leurs coups, cadence sans la part de l'Overclock
+// (items.OC_RATE[0] = 1 + valeur de l'Overclock, lu par recompute, hors combat)
+import { AOE, DMG_ZONE } from './config.js'; // (WEAPON_KEYS : déjà importé)
+const ZONE_W = new Uint8Array(WEAPON_COUNT);
+for (const k of AOE.armesZone) if (WEAPON_KEYS.indexOf(k) >= 0) ZONE_W[WEAPON_KEYS.indexOf(k)] = 1;
+let OCR = null; // items.OC_RATE (null sans le module des objets)
+//#endregion e5:AJ-equilibrage-aoe
 // 1 si les cinq stats effectives de l'arme sont des nombres finis ≥ 0 (relevé à chaque update et à chaque sync). Un
 // bonus passif non fini — une erreur dans un autre module — rendrait NaN la cadence, la portée ou les dégâts : l'arme
 // se tait tant que la valeur n'est pas redevenue saine, au lieu d'écrire NaN dans son accumulateur de tir, dans
@@ -301,11 +309,12 @@ export function init(context) {
   world = ctx.world;
   render = ctx.render;
   initTurrets();
+  OCR = ctx.items && ctx.items.OC_RATE ? ctx.items.OC_RATE : null; // § E5.AJ
 
   for (let w = 0; w < WEAPON_COUNT; w++) {
     const W = WEAPONS[w];
     // Drapeaux du § I.2 : BYPASS_SHIELD (orbitaux, EMP, roquettes), HEAVY (rail), NO_CRIT | NO_IMPACT (EMP).
-    flagsOf[w] = (W.bypassShield ? DMG.BYPASS_SHIELD : 0) | (W.hitstopOnKill ? DMG.HEAVY : 0) | (W.noCrit ? DMG.NO_CRIT | DMG.NO_IMPACT : 0);
+    flagsOf[w] = (W.bypassShield ? DMG.BYPASS_SHIELD : 0) | (W.hitstopOnKill ? DMG.HEAVY : 0) | (W.noCrit ? DMG.NO_CRIT | DMG.NO_IMPACT : 0) | (ZONE_W[w] === 1 ? DMG_ZONE : 0); // § E5.AJ
     kHeight[w] = W.shotHeight || 0;
     kLingerInv[w] = W.impactLinger > 0 ? 1 / W.impactLinger : 0;
   }
@@ -365,7 +374,7 @@ function recompute() {
       const lv = levels[w * STAT_COUNT + s];
       let v = W.stats[s][(lv > 0 ? lv : 1) - 1]; // non possédée : valeurs du niveau 1 (aperçu de la boutique)
       if (s === STAT.DAMAGE) v *= mods.damageMul * (1 + OVERCHARGE_STEP * overcharge[w]); // surcharge : § E1.D
-      else if (s === STAT.RATE) v *= mods.fireRateMul;
+      else if (s === STAT.RATE) v *= ZONE_W[w] === 1 && AOE.overclockSansZone && OCR !== null ? mods.fireRateMul / OCR[0] : mods.fireRateMul; // § E5.AJ : pas d'Overclock sur la zone
       else if (s === STAT.AREA) v *= mods.areaMul;
       else if (s === STAT.SPECIAL && W.specialScalesWithArea) v *= mods.areaMul;
       effective[w * STAT_COUNT + s] = v;

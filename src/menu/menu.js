@@ -1,5 +1,9 @@
 // MENU PRINCIPAL — scène 3D de l'écran titre (« hero shot »), demande de Femz du 13/11/2026.
 //
+// OUTIL SEULEMENT depuis l'Écran Agents, tâche 7 (22/11/2026) : l'écran titre du jeu est l'accueil peint
+// (src/menu/accueil.js). Cette scène n'est plus chargée (import dynamique de main.js) qu'avec ?fbx= / ?modele= / ?anim= :
+// cuisson des animations (tests/cuire-anim.mjs, heros.cuire), banque UAL, contrôles des pieds du héros du titre.
+//
 // Une scène et une caméra À PART (perspective : c'est un plan de cinéma, pas la caméra de jeu), rendue derrière le
 // panneau d'interface de l'écran titre (src/ui.js, inchangé) qui reste à gauche ; le héros occupe le tiers droit.
 //   - héros (heros-menu.js) sur un promontoire du désert, toutes armes et 4 tourelles, cape au vent, boucle de poses ;

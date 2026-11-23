@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { CAMERA, SHAKE, TRAUMA_COUNT, ZOOM } from './config.js';
 import { CAMERA_3P } from './config.js'; // § E5.AB : lacet tourné à la souris (mode Souris)
+import { SENSIBILITE_SOURIS } from './config.js'; // § E5.AG : réglage « Sensibilité de la souris » (multiplicateur)
 import { P } from './state.js';
 
 const DEG = Math.PI / 180;
@@ -689,6 +690,20 @@ function pasLacet() {
 }
 //#endregion e5:AB-camera-3p
 
+//#region e5:AK-mort-claire
+/**
+ * § E5.AK : [poids 0..1, x, z] — la cible vue est tirée vers (x, z) de ce poids, après le suivi et le rattrapage. Écrit
+ * à chaque image par src/mort-claire.js (0 hors de la mort). Poids 0 : x + (a − x) × 0 = x, la vue de main au bit près.
+ */
+export const REGARD = new Float64Array(3);
+/** Sans argument, sans branche (§ V) : tourne à chaque image. */
+function regarder() {
+  const w = REGARD[0];
+  view.targetX += (REGARD[1] - view.targetX) * w;
+  view.targetZ += (REGARD[2] - view.targetZ) * w;
+}
+//#endregion e5:AK-mort-claire
+
 export function update(realDt) {
   // Suivi : lissage exponentiel indépendant de la cadence, sur le joueur seul (l'avance est retirée, puis rajoutée).
   // § E5.AB.10 : l'état du suivi est S[SUIVI_X/Z] (l'ancienne view.targetX/Z, mêmes calculs) ; la cible vue y ajoute le
@@ -731,6 +746,9 @@ export function update(realDt) {
   //#region e5:AB-camera-3p
   pasRattrapage(); // § E5.AB.10 (fonction à part, § V)
   //#endregion e5:AB-camera-3p
+  //#region e5:AK-mort-claire
+  regarder(); // § E5.AK : cible vue tirée vers la source du coup mortel (poids 0 : rien ne change)
+  //#endregion e5:AK-mort-claire
 
   // Plafonds : avance des tranches.
   S[SLOT_CLOCK] += realDt;
@@ -1206,7 +1224,7 @@ export function tourner(T) {
   const px = T[0];
   T[0] = 0;
   if (px !== px) return;
-  let g = S[YAW_GOAL] - px * CAMERA_3P.sensibilite;
+  let g = S[YAW_GOAL] - px * CAMERA_3P.sensibilite * SENSIBILITE_SOURIS.mul; // § E5.AG : × le réglage (1 au milieu : exact)
   // lacets bornés : ramenés de 360° ENSEMBLE (même vue, sin et cos périodiques)
   while (g > 540) {
     g -= 360;

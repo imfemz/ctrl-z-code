@@ -13,6 +13,9 @@ import { ARGF, F_V, F_X, F_Z, P, rand } from '../state.js';
 import { SFX, TRAUMA } from '../config.js';
 import { ANIM_AGENTS } from '../config.js'; // § E5.F : poses clés des gestes, course et poings du Bastion
 import { geste as G, foulee as FOULEE, fouleeN as FOULEE_N } from './heros-anim.js';
+//#region e5:AF-course-shinobi
+import { courseNinja as NJ, NJ13 } from './heros-anim.js'; // § E5.AF.6 : un geste part de la pose ninja
+//#endregion e5:AF-course-shinobi
 
 const L = COMBOS.list;
 // § E5.F : un combo de plus (poings du Bastion, poussé par la région e5:F-anim-agents) — taille lue sur la liste
@@ -453,6 +456,11 @@ function departF(c) {
   // pose de départ : celle qu'on voit (enchaînement), ou la garde du geste si le corps était à la marche
   const vu = OUTW[0] > 0.5 && dernier >= 0 && G[1] === 4;
   for (let k = 0; k < NP; k++) START[k] = vu ? OUT[k] : GGA[g * NP + k];
+  //#region e5:AF-course-shinobi
+  // § E5.AF.6 : sorti de la course ninja, le geste part de la pose ninja (mêlée à la garde par le poids w) — l'armé balaie
+  // les bras de derrière vers devant au lieu d'un saut d'une image vers la garde
+  if (!vu && NJ[2] > 0) for (let k = 0; k < NP; k++) START[k] += (NJ13[k] - START[k]) * NJ[2];
+  //#endregion e5:AF-course-shinobi
   // pas du pied avant (fente) : le pied du côté du coup avance jusqu'à l'impact (heros-anim : recentrer)
   const pied = GT[g * 6 + 5];
   if (pied > 0) {

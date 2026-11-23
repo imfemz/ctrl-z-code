@@ -10,11 +10,19 @@
 //   cape derrière le héros en course, la gonfle au dash, la fait balancer à l'arrêt), traînée tangentielle faible,
 //   souffle de repos déterministe (fonction du temps simulé). Collisions : capsule du dos (cape_dos du .glb), bras (2
 //   capsules épaule → main données en monde à chaque image par heros-anim, setCapsuleMonde), capsule des jambes, sol.
+//   DOS RÉEL (skins, tâche 2, 22/11) : avec init({ surface }) (src/anim/dos-reel.js), la capsule cape_dos et le plan du
+//   dos sont remplacés par la surface arrière du maillage, la disposition de repos est posée dessus, et une adhérence
+//   (ANIM.cape.dosReel) presse le tissu contre le dos à l'arrêt seulement (nulle en course et au dash). Porte 1 (Femz,
+//   22/11) : la cape se resserre à la taille (rangées sur le torse ≤ sa demi-largeur + dosReel.serrage) ; avec
+//   init({ bras, jambesReelles }), les capsules des bras et des jambes prennent le rayon RÉEL du maillage le long de leur
+//   axe (dos-reel.profilBras / profilJambe, côté arrière pour les jambes) + dosReel.marge, au lieu de 0,10 / 0,11 + marge.
 //   PAS FIXE : ANIM.cape.hz (120 Hz), sous-pas accumulés ; la pose du corps est INTERPOLÉE entre l'image précédente
 //   et l'image courante à l'instant de chaque sous-pas (translation et échelle linéaires, rotation sphérique) : à 60 Hz (2 sous-pas par image) et à 240 Hz (un sous-pas une
-//   image sur deux) les sous-pas tombent aux mêmes instants. Mesure (tests/anim-cape.mjs, 13/11) : écart moyen 60 / 240 Hz
-//   0,4 à 2,3 cm en course, virage et arrêt, 1,3 cm au repos ; 4 à 11 cm en moyenne au plein du fouet d'un dash, jusqu'à
-//   ~50 cm sur une POINTE (le tissu amplifie la différence d'échantillonnage du saut de pose du dash). Zéro allocation par image : tout l'état est dans des tableaux typés.
+//   image sur deux) les sous-pas tombent aux mêmes instants. Mesure (tests/anim-cape.mjs, contrôle 60 / 240 Hz, écart
+//   moyen des 54 particules aux images 100, 140, 180, 200, 270, 330, 400) : 13/11 de 0,4 à 2,3 cm en course, 1,3 au repos,
+//   jusqu'à ~50 cm sur une pointe au dash ; 22/11 (dos réel, taille, membres réels) 2,5 / 3,4 / 3,0 / 3,0 / 12,1 / 12,2 /
+//   1,3 cm, moyenne 5,4 (avant : 3,6), jusqu'à ~92 cm sur une POINTE au fouet du dash (le tissu au contact du corps
+//   amplifie la différence d'échantillonnage du saut de pose du dash). Zéro allocation par image : tout l'état est dans des tableaux typés.
 // RENDU
 //   Un seul maillage (un seul héros), indexé, double face : positions et normales lissées réécrites à chaque image ;
 //   matériau peint de src/rendu/ (profil « cape », ajouté à PEINT.profils s'il manque) ; dehors noir bleuté, dedans
@@ -35,7 +43,7 @@ import * as THREE from 'three';
 import { ANIM } from './reglages.js';
 import { ajouterRevele, createPaintedMaterial } from '../rendu/materiaux.js';
 import { PEINT } from '../rendu/reglages.js';
-import { envelopper, profilsCorps, zProfil } from './profil-corps.js';
+import { hauteurDos, demiLargeurCorps, NB_BRAS } from './dos-reel.js';
 
 const C = ANIM.cape;
 const NX = C.cols;
@@ -60,10 +68,6 @@ const cL = new Float32Array(MAXC);
 const cK = new Float32Array(MAXC);
 let nC = 0;
 
-// profil du dos (src/anim/profil-corps.js, retour de Femz du 22/11) : quand le modèle le donne, il REMPLACE le cylindre
-// du dos et le plan plat comme volume du torse (ils gardaient la cape à 10 cm de la taille)
-let PROF = null;
-const ADH = new Float64Array([1]); // [0] : part de l'adhérence : 1 à l'arrêt, 0 dès que le buste va plus vite que C.adherenceVmax (lissée)
 // capsules (repère du corps) : 0 = dos, 1 = jambes ; a(3) b(3) rayon
 const capLocal = new Float32Array(2 * 7);
 // capsules données EN MONDE à chaque image (bras, qui bougent sur leurs os) : 2 et 3 ; image précédente / courante
@@ -184,7 +188,20 @@ const TIME = 1; // temps simulé de la cape
 const STEPS = 2; // sous-pas de la dernière image
 const TOTAL = 3; // sous-pas depuis le reset
 const ALPHA = 4; // instant du sous-pas dans l'image (0..1) : passé par S, jamais en argument (§ V)
-const S = new Float64Array(5);
+const ADH = 5; // adhérence au dos de l'image (0..1 : 1 à l'arrêt, 0 au-delà de dosReel.vitesse), lissée
+const S = new Float64Array(6);
+// dos réel (src/anim/dos-reel.js) : surface du modèle posée à l'init (null : plan et capsule cape_dos d'avant) ;
+// réglages (§ V : rien n'est lu dans ANIM sur le chemin chaud) : marge, adhérence (m/s²), vitesse (m/s), tau (s),
+// demi-écart entre deux rangées (m) ; Q = échange avec hauteurDos (x, y, z, demi-fenêtre)
+const DR = new Float64Array([C.dosReel.marge, C.dosReel.adherence, C.dosReel.vitesse, C.dosReel.tau, (C.dosReel.fenetre * C.longueur) / (NY - 2) / 2]);
+const Q = new Float64Array(4);
+const ADG = new Float64Array(1); // adhérence en m/s² (0 sans dos réel), posée à l'init
+// bras et jambes RÉELS (revue du 22/11, porte 1) : profil du rayon le long de chaque capsule dynamique (dos-reel.profilBras
+// et profilJambe, NB_BRAS tranches : bras g, bras d, jambe g, jambe d) ; RBA[j] = 1 quand init a reçu le profil de la
+// capsule j (sinon : rayon de la capsule + marge, comme avant)
+const RB = new Float64Array(4 * NB_BRAS);
+const RBA = new Int8Array(4);
+let surf = null;
 /** Entrée de update() : [0] = dt simulé de l'image (un flottant passé en argument serait emballé, § V). */
 export const entree = new Float64Array(1);
 const st = { pret: false, visible: true };
@@ -241,21 +258,30 @@ export function creerMateriau() {
 
 /**
  * ancrageG / ancrageD : [x, y, z] repère du modèle ; dos : { a, b, rayon } ; material : facultatif (creerMateriau()) ;
- * corps : données du .glb (pieces.js : geometry + pieces) — profil du dos ; sans lui, cylindre du dos et plan plat.
+ * surface : dos-reel.surfaceDos (sans elle, capsule cape_dos et plan plat) ; bras / jambesReelles : profils de rayon
+ * (dos-reel.profilBras / profilJambe).
  */
-export function init({ scene, ancrageG, ancrageD, dos, jambes = C.jambes, material = null, corps = null }) {
-  const pr = profilsCorps(corps, ['corps', 'tete']); // la tête aussi : le haut de la cape ne passe pas sous le casque
-  // enveloppe à la demi-maille de la cape (écart entre colonnes, entre rangées) : ses triangles ne coupent pas les omoplates
-  PROF = pr ? envelopper(pr.dos, C.largeurHaut / (NX - 1) / 2, C.longueur / (NY - 2) / 2, -1) : null;
-  // ----- disposition de repos (repère du corps) : rangée 0 sur la ligne des épaules, bombée autour du cou ; avec le
-  // profil, chaque particule est posée à C.ecartDos derrière le dos (rangée 0 comprise : les accroches touchent le dos)
-  // avec le profil, les accroches descendent de C.accrocheDy (celles du .glb flottaient 4–5 cm au-dessus des épaules)
-  const yTop = (ancrageG[1] + ancrageD[1]) / 2 + (PROF !== null ? C.accrocheDy : 0);
+export function init({ scene, ancrageG, ancrageD, dos, jambes = C.jambes, material = null, surface = null, bras = null, jambesReelles = null }) {
+  surf = surface;
+  const profils = [bras && bras[0], bras && bras[1], jambesReelles && jambesReelles[0], jambesReelles && jambesReelles[1]];
+  for (let j = 0; j < 4; j++) {
+    RBA[j] = profils[j] ? 1 : 0;
+    if (profils[j]) for (let i = 0; i < NB_BRAS; i++) RB[j * NB_BRAS + i] = profils[j][i];
+  }
+  ADG[0] = surface !== null ? DR[1] : 0;
+  // ----- disposition de repos (repère du corps) : rangée 0 sur la ligne des épaules, bombée autour du cou
+  const yTop = (ancrageG[1] + ancrageD[1]) / 2;
   const zTop = (ancrageG[2] + ancrageD[2]) / 2;
   const zDos = Math.min(zTop, dos.a[2] - dos.rayon - 0.05);
   for (let r = 0; r < NY - 1; r++) {
     const t = r / (NY - 2);
-    const hw = C.largeurHaut / 2 + (C.largeurBas / 2 - C.largeurHaut / 2) * t;
+    let hw = C.largeurHaut / 2 + (C.largeurBas / 2 - C.largeurHaut / 2) * t;
+    if (surf !== null && r > 0) {
+      // resserrée à la taille (Femz, porte 1) : sur le torse, la rangée ne dépasse pas sa demi-largeur (jamais moins que
+      // les hanches) + serrage — elle ne tend plus de pont vers les bras ; sous le torse, l'évasement d'avant
+      const wc = demiLargeurCorps(surf, yTop - t * C.longueur);
+      if (wc > 0) hw = Math.min(hw, wc + C.dosReel.serrage);
+    }
     for (let c = 0; c < NX; c++) {
       const p = r * NX + c;
       const u = c / (NX - 1); // 0 = gauche du personnage (+X), 1 = droite
@@ -268,9 +294,15 @@ export function init({ scene, ancrageG, ancrageD, dos, jambes = C.jambes, materi
         x = hw * (1 - 2 * u);
         y = yTop - t * C.longueur;
         z = zDos - 0.07 * t;
+        if (surf !== null) {
+          // dos réel : la rangée est posée SUR le dos du modèle (même écart que la collision)
+          Q[0] = x;
+          Q[1] = y;
+          Q[3] = DR[4];
+          hauteurDos(surf, Q);
+          z = Q[2] - DR[0];
+        }
       }
-      // rangée 0 : jamais avancée (au milieu, elle passe derrière le bas du casque), seulement reculée hors du dos
-      if (PROF !== null) z = r === 0 ? Math.min(z, zProfil(PROF, x, y, true) - C.ecartDos) : zProfil(PROF, x, y, true) - C.ecartDos;
       rest[p * 3] = x;
       rest[p * 3 + 1] = y;
       rest[p * 3 + 2] = z;
@@ -311,9 +343,11 @@ export function init({ scene, ancrageG, ancrageD, dos, jambes = C.jambes, materi
     capLocal.set(b, k * 7 + 3);
     capLocal[k * 7 + 6] = rr;
   };
-  setCap(0, dos.a, dos.b, dos.rayon);
+  // dos réel : la capsule cape_dos (plus épaisse que le dos creusé) et le plan sont remplacés par la surface
+  setCap(0, dos.a, dos.b, surf !== null ? 0 : dos.rayon);
   setCap(1, jambes.a, jambes.b, jambes.rayon);
-  planActif = PROF === null && C.planDos !== null && C.planDos !== undefined;
+  // PLAN[0] reste calculé avec le dos réel : la limite de course de dosReel() le rejoint
+  planActif = surf === null && C.planDos !== null && C.planDos !== undefined;
   PLAN[0] = Math.min(dos.a[2], dos.b[2]) - dos.rayon - C.marge + (C.planDos !== null && C.planDos !== undefined ? C.planDos : 0);
 
   // ----- maillage : créé une fois, réutilisé si init est rappelé (changement de modèle de l'agent, hors combat)
@@ -412,6 +446,7 @@ export function reset(M) {
   S[ACC] = 0;
   S[TOTAL] = 0;
   S[TIME] = 0;
+  S[ADH] = 1;
   normales();
 }
 
@@ -470,35 +505,10 @@ function collisions() {
       }
     }
   }
-  if (PROF !== null) {
-    // profil du dos (repère du buste, MI = rotation × échelle) : coordonnées locales par les colonnes de MI, z limité
-    // au profil − margeDos ; la particule est ramenée le long de l'axe avant du buste
-    const c0 = MI[0] * MI[0] + MI[1] * MI[1] + MI[2] * MI[2];
-    const c1 = MI[4] * MI[4] + MI[5] * MI[5] + MI[6] * MI[6];
-    const c2 = MI[8] * MI[8] + MI[9] * MI[9] + MI[10] * MI[10];
-    for (let p = NX; p < N; p++) {
-      const i = p * 3;
-      const px = pos[i] - MI[12];
-      const py = pos[i + 1] - MI[13];
-      const pz = pos[i + 2] - MI[14];
-      const lx = (px * MI[0] + py * MI[1] + pz * MI[2]) / c0;
-      const ly = (px * MI[4] + py * MI[5] + pz * MI[6]) / c1;
-      const lz = (px * MI[8] + py * MI[9] + pz * MI[10]) / c2;
-      // en course (ADH[0] → 0), la limite rejoint le plan d'avant derrière le dos : le bras qui part en arrière passe
-      // entre le dos et la cape au lieu de la traverser ; à l'arrêt, le profil seul
-      let lim = zProfil(PROF, lx, ly, true) - C.margeDos;
-      if (ADH[0] < 1 && PLAN[0] < lim) lim += (PLAN[0] - lim) * (1 - ADH[0]);
-      const d = lz - lim;
-      if (d > 0) {
-        pos[i] -= MI[8] * d;
-        pos[i + 1] -= MI[9] * d;
-        pos[i + 2] -= MI[10] * d;
-      }
-    }
-  }
+  if (surf !== null) dosReel();
   for (let k = 0; k < NCAP; k++) {
     const o = k * 7;
-    if (!(capW[o + 6] > 0) || (k === 0 && PROF !== null)) continue;
+    if (!(capW[o + 6] > 0)) continue;
     const ax = capW[o];
     const ay = capW[o + 1];
     const az = capW[o + 2];
@@ -507,6 +517,11 @@ function collisions() {
     const bz = capW[o + 5] - az;
     const bb = bx * bx + by * by + bz * bz || 1;
     const rr = capW[o + 6] + C.marge;
+    // bras et jambes réels : rayon du profil à t (+ marge) au lieu du rayon fixe
+    const rb = k >= 2 && RBA[k - 2] === 1 ? (k - 2) * NB_BRAS : -1;
+    // marge : bras = celle des capsules (C.marge, 2,5 cm — mesuré : avec 0,8 cm, une arête du bord fouettée au dash
+    // traversait le vrai bras de 5 cm, contre 3,3 avant) ; jambes = celle du dos réel
+    const mg = k < 4 ? C.marge : DR[0];
     for (let p = NX; p < N; p++) {
       const i = p * 3;
       const px = pos[i] - ax;
@@ -518,9 +533,15 @@ function collisions() {
       const dy = py - by * t;
       const dz = pz - bz * t;
       const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < rr * rr) {
+      let rp = rr;
+      if (rb >= 0) {
+        Q[0] = t;
+        rayonBras(rb);
+        rp = Q[1] + mg;
+      }
+      if (d2 < rp * rp) {
         const d = Math.sqrt(d2) || 1e-6;
-        const f = (rr - d) / d;
+        const f = (rp - d) / d;
         pos[i] += dx * f;
         pos[i + 1] += dy * f;
         pos[i + 2] += dz * f;
@@ -534,6 +555,56 @@ function collisions() {
       // frottement au sol
       prev[i - 1] += (pos[i - 1] - prev[i - 1]) * 0.5;
       prev[i + 1] += (pos[i + 1] - prev[i + 1]) * 0.5;
+    }
+  }
+}
+
+/** Bras réels : Q[1] = rayon du profil RB (début rb) à t = Q[0] ∈ [0, 1], interpolé entre les centres des tranches. */
+function rayonBras(rb) {
+  let f = Q[0] * NB_BRAS - 0.5;
+  f = (Math.abs(f) - Math.abs(f - (NB_BRAS - 1)) + (NB_BRAS - 1)) * 0.5;
+  const i0 = Math.floor(f);
+  const i1 = i0 < NB_BRAS - 1 ? i0 + 1 : i0;
+  const u = f - i0;
+  Q[1] = RB[rb + i0] * (1 - u) + RB[rb + i1] * u;
+}
+
+/**
+ * Dos réel : dans le repère du buste (colonnes de MI), aucune particule libre devant la surface du dos moins la marge ;
+ * au-delà, ramenée le long de l'axe avant (position seule, comme le plan qu'elle remplace). En course, la limite glisse
+ * vers le plan PLAN[0] avec l'adhérence qui s'efface (mesuré à la fusion de 0.5.13 : traversées de la cape par les bras
+ * en course 30 → 1 point, tests/identite-cape-ecart.mjs ; repos inchangé). Juste après un arrêt, la cape qui retombe
+ * encore tenue au plan passait sous le casque (12–18 points, 4,4 cm) : la surface du dos réel de la cape compte
+ * désormais la tête (dos-reel.surfaceDos, fix de la fusion, 22/11 : 1 point, 0,7 cm).
+ */
+function dosReel() {
+  const sx = Math.sqrt(MI[0] * MI[0] + MI[1] * MI[1] + MI[2] * MI[2]) + 1e-12;
+  const sy = Math.sqrt(MI[4] * MI[4] + MI[5] * MI[5] + MI[6] * MI[6]) + 1e-12;
+  const sz = Math.sqrt(MI[8] * MI[8] + MI[9] * MI[9] + MI[10] * MI[10]) + 1e-12;
+  const ox = MI[12];
+  const oy = MI[13];
+  const oz = MI[14];
+  Q[3] = DR[4];
+  for (let p = NX; p < N; p++) {
+    const i = p * 3;
+    const px = pos[i] - ox;
+    const py = pos[i + 1] - oy;
+    const pz = pos[i + 2] - oz;
+    Q[0] = (px * MI[0] + py * MI[1] + pz * MI[2]) / (sx * sx);
+    Q[1] = (px * MI[4] + py * MI[5] + pz * MI[6]) / (sy * sy);
+    const zl = (px * MI[8] + py * MI[9] + pz * MI[10]) / (sz * sz);
+    hauteurDos(surf, Q);
+    // en course (S[ADH] → 0), la limite rejoint le plan d'avant derrière le dos (porté de profil-corps, main b010a50) :
+    // le bras qui part en arrière passe entre le dos et la cape au lieu de la traverser ; à l'arrêt, le dos réel seul
+    // (sans branche ni `let` réécrit : g = écart du plan à la surface, seule sa part négative compte ; § V)
+    const lim = Q[2] - DR[0];
+    const g = PLAN[0] - lim;
+    const d = zl - lim - (g - Math.abs(g)) * 0.5 * (1 - S[ADH]);
+    if (d > 0) {
+      const f = d / sz; // le long de l'axe z de MI (longueur sz) : déplacement de d × sz en monde
+      pos[i] -= MI[8] * f;
+      pos[i + 1] -= MI[9] * f;
+      pos[i + 2] -= MI[10] * f;
     }
   }
 }
@@ -557,9 +628,12 @@ function sousPas() {
   const keep = 1 - C.amortissement;
   const kN = C.traineeNormale;
   const kT = C.traineeTangente;
-  // adhérence (avec le profil) : poussée douce vers l'avant du buste (colonne z de MI / échelle) : la cape se pose sur le
-  // dos au lieu de pendre à la verticale de ses accroches ; la traînée de l'air l'emporte dès que l'agent court
-  const adh = PROF !== null ? (C.adherence * ADH[0]) / (Math.sqrt(MI[8] * MI[8] + MI[9] * MI[9] + MI[10] * MI[10]) || 1) : 0;
+  // adhérence (dos réel, à l'arrêt) : accélération le long de l'avant du buste (axe z de MI normalisé)
+  const sza = Math.sqrt(MI[8] * MI[8] + MI[9] * MI[9] + MI[10] * MI[10]) + 1e-12;
+  const ad = (ADG[0] * S[ADH]) / sza;
+  const adx = MI[8] * ad;
+  const ady = MI[9] * ad;
+  const adz = MI[10] * ad;
   for (let p = 0; p < N; p++) {
     const i = p * 3;
     if (invM[p] === 0) {
@@ -585,9 +659,9 @@ function sousPas() {
     const nz = nrm[i + 2];
     const vn = rx * nx + ry * ny + rz * nz;
     const tip = r === TIP ? 1.4 : 1;
-    const ax = (-kN * vn * nx - kT * rx) * tip + adh * MI[8];
-    const ay = (-kN * vn * ny - kT * ry) * tip - C.gravite + adh * MI[9];
-    const az = (-kN * vn * nz - kT * rz) * tip + adh * MI[10];
+    const ax = (-kN * vn * nx - kT * rx) * tip + adx;
+    const ay = (-kN * vn * ny - kT * ry) * tip - C.gravite + ady;
+    const az = (-kN * vn * nz - kT * rz) * tip + adz;
     const x = pos[i];
     const y = pos[i + 1];
     const z = pos[i + 2];
@@ -645,12 +719,13 @@ export function update(M) {
   }
   S[STEPS] = 0;
   if (!(dt > 0)) return;
-  {
-    // adhérence : à l'arrêt et au pas seulement (en course, le bras qui part en arrière doit pouvoir écarter la cape)
-    let f = 1 - Math.sqrt(jx * jx + jz * jz) / dt / C.adherenceVmax;
-    f = f < 0 ? 0 : f;
-    ADH[0] += (f - ADH[0]) * Math.min(1, dt * 8); // tableau typé : un `let` de module allouait un nombre à chaque écriture
-  }
+  // adhérence : 1 à l'arrêt, 0 dès dosReel.vitesse (vitesse horizontale du buste sur l'image) ; tombe aussitôt, revient
+  // en tau s (le héros qui s'arrête : la cape retombe sur le dos sans claquer)
+  const v = Math.sqrt(jx * jx + jz * jz) / dt;
+  const cible = 1 - v / DR[2];
+  const c0 = (Math.abs(cible) - Math.abs(cible - 1) + 1) * 0.5;
+  if (c0 < S[ADH]) S[ADH] = c0;
+  else S[ADH] += (c0 - S[ADH]) * (1 - Math.exp(-dt / DR[3]));
   decompose(M0, D0);
   decompose(M1, D1);
   let acc = S[ACC];
@@ -788,7 +863,13 @@ export function inspect(out) {
       let t = (px * bx + py * by + pz * bz) / bb;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const d = Math.hypot(px - bx * t, py - by * t, pz - bz * t);
-      if (r - d > pen) pen = r - d;
+      let rk = r;
+      if (RBA[k] === 1) {
+        Q[0] = t;
+        rayonBras(k * NB_BRAS);
+        rk = Q[1];
+      }
+      if (rk - d > pen) pen = rk - d;
     }
   }
   out.penetrationBras = pen;

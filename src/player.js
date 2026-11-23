@@ -4,7 +4,7 @@
 // heros-anim (squelette, buste et jambes séparés, pieds posés, dash, images rémanentes, silhouette, cape), reperes (R1
 // recharge du dash, R2 santé basse, posés au sol), armes-heros (armes sur les avant-bras, visée, bouches, tourelles).
 // La simulation (P) ne change pas : seul le dessin se sépare (P.rot reste le cap du jeu).
-import { ACTION, PALETTE, PLAYER, SFX, STRIKE_KEYS, WORLD } from './config.js';
+import { ACTION, PALETTE, PLAYER, SFX, WORLD } from './config.js';
 import { P, PAREFEU_F, mods } from './state.js';
 import { AGENT, AGENTS } from './config.js'; // § E2.D : teinte d'accent et passif « Réflexe » de l'agent
 import { REGLAGES } from './config.js'; // § E5.AB.14 : clic pour avancer façon LoL (REGLAGES.souris)
@@ -25,7 +25,8 @@ const S_CUMUL = 0; // SOIN_HEROS[0] : PV rendus pas encore signalés
 
 import * as CPV2 from './anim/coup-pied.js';
 //#region e5:U-visee-souris
-import * as visee from './visee.js'; // § E5.U : visée à la souris (direction, regard du buste, trait de la Frappe éclair)
+import * as visee from './visee.js';
+import * as ombreFrappe from './ombre-frappe.js'; // § E5.AM : ombre de l'agent qui frappe la Frappe éclair // § E5.U : visée à la souris (direction, regard du buste, trait de la Frappe éclair)
 //#endregion e5:U-visee-souris
 // § E5.X6 (D2, D3) : dash refusé (clic sourd + ping de R1), tampon de l'appui. Horloge et dernier clic en tableau typé.
 import { ACTIONS_IMPOSSIBLES } from './config.js';
@@ -88,6 +89,7 @@ export function init(context) {
   reperes.init(ctx.scene, ctx.render); // § E5.X6 (D14) : render pour la copie des crans dessinée par-dessus la foule
   lastDashMul[0] = mods.dashCdMul;
   visee.init(ctx); // § E5.U : la plaque du trait est dans la scène avant le prewarm
+  ombreFrappe.init(ctx); // § E5.AM : matériaux de l'ombre de la Frappe éclair (ses maillages au premier héros posé)
 }
 
 /**
@@ -131,15 +133,16 @@ export function ajouterModeleAgent(a, donnees) {
 }
 
 /**
- * § E5.K : pose le modèle de run.agent (hors combat : titre, choix de l'agent, Noyau) puis libère tous les autres.
- * Rend les agents libérés (main.js oublie leur glTF). Rien si le modèle de run.agent n'est pas chargé.
+ * § E5.K : pose le modèle de run.agent (hors combat : titre, écran Agents, Noyau) puis libère tous les autres, sauf
+ * `garder` (l'agent montré par la fiche de l'écran Agents, -1 : aucun). Rend les agents libérés (main.js oublie leur
+ * glTF). Rien si le modèle de run.agent n'est pas chargé.
  */
-export function poserAgentCourant() {
+export function poserAgentCourant(garder = -1) {
   if (!aModeleAgent(run.agent)) return [];
   poserAgent(run.agent);
   teinter(AGENTS[run.agent].accent);
   const libres = [];
-  for (let a = 0; a < modeles.length; a++) if (a !== agentPose && libererModele(a)) libres.push(a);
+  for (let a = 0; a < modeles.length; a++) if (a !== agentPose && a !== garder && libererModele(a)) libres.push(a);
   return libres;
 }
 
@@ -178,6 +181,7 @@ function poserAgent(a) {
   heros.init({ scene: ctx.scene, donnees, materiau, avecCape: AGENTS[a].cape !== false, avecTissus: !!AGENTS[a].tissus, agent: a }); // § E5.I : tissus du Shinobi // SkinnedMesh « joueur », silhouette, images rémanentes, cape
   armes.init({ scene: ctx.scene, materiau }); // modules d'armes, bouches, tourelles, éclairs
   armes.ACTIF[0] = 1; // les tirs partent des bouches (weapons.js lit armes.api)
+  ombreFrappe.lier(a); // § E5.AM : l'ombre partage la géométrie et le squelette de CE héros (avant le préchauffage)
   modele = donnees;
   agentPose = a;
   accentPose = -1;
@@ -432,9 +436,6 @@ export function update(dt) {
     }
   }
   if (!appuiDash && P.dashReq > 0) P.dashReq = P.dashReq > dt ? P.dashReq - dt : 0; // § E5.X6 (D3)
-  // 4 bis. 16/11 (point 3) : frappe éclair à la touche (A en AZERTY / E par défaut) — weapons-agents.fireFlash la consomme
-  if (input.pressed(ACTION.STRIKE)) P.strikeReq = STRIKE_KEYS.bufferSeconds;
-  else if (P.strikeReq > 0) P.strikeReq = P.strikeReq > dt ? P.strikeReq - dt : 0;
   // 5. vitesse et déplacement. Le pas est partagé entre le dash (le temps de dash qui reste, au plus) et la
   // marche (le reste du pas) : le dash parcourt exactement dash.speed × dash.duration, à toute cadence.
   let nx = P.x;

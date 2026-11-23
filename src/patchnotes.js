@@ -4,8 +4,40 @@
 // Changer `version` rallume la pastille « NOUVEAU » chez tous les joueurs (PATCHNOTES_UI.cleVue).
 // Sources : git log et ARCHITECTURE.md (plan addictif, étapes 1 à 4).
 export const PATCHNOTES = {
-  version: '0.5.15',
+  version: '0.5.16',
   entrees: [
+    {
+      version: '0.5.16',
+      date: '23/11/2026',
+      titre: 'Écran Agents',
+      lignes: [
+        'Nouvel écran Agents : « Jouer » ouvre la liste des agents, puis la fiche de celui que vous choisissez.',
+        'La fiche montre votre agent en grand et en 3D, avec ses stats, son passif et son arme de départ.',
+        'Chaque agent a sa garde : l’Éclaireur prêt à tirer, le Bastion campé, le Shinobi en position de combat.',
+        'L’onglet Agents du Noyau ouvre le même écran.',
+        'Nouvel écran titre : un décor peint, votre agent en 3D à droite, de la poussière dans l’air.',
+        'Premier skin à gagner : « Agent de l’ombre » pour le Shinobi. Détruisez le boss de rang 2 (vague 10) avec le Shinobi pour le débloquer.',
+        'Son apparence arrive dans une prochaine mise à jour : le débloquer dès maintenant vous le garde.',
+        'La cape de l’Éclaireur et le pan avant du Shinobi collent encore mieux au corps.',
+        'Les tissus du Shinobi ne traversent plus le katana dans son dos.',
+        'Une seule barre de vie, au-dessus de votre agent : bleue avec un bouclier tant que le Pare-feu tient, verte avec un cœur pour vos PV.',
+        'Cette barre s’efface après 30 s sans dégâts.',
+        'Le cœur clignote quand il vous reste peu de PV.',
+        'Quand vous tombez, le jeu ralentit et une flèche montre ce qui vous a eu.',
+        'L’écran de fin dit en une phrase ce qui vous a eu et comment l’éviter.',
+        'La Frappe éclair part toute seule : une ombre frappe pour vous, plus besoin de touche.',
+        'Virus : les robots infectés laissent échapper un gaz vert, avec un nouveau son d’infection.',
+        'Le Shinobi court en ninja quand il fonce droit devant.',
+        'Le Cryogel est retiré : le Shuriken givré s’obtient maintenant avec le Boomerang et les Éclats.',
+        'Les boss, les blindés et les élites résistent mieux aux armes de zone.',
+        'L’Overclock se cumule 5 fois au plus.',
+        'L’Overclock ne renforce plus les armes de zone.',
+        'Dès la vague 6, les robots gagnent un peu de PV et de dégâts à chaque vague.',
+        'Pause : « Recommencer » est juste au-dessus de « Quitter la partie ».',
+        'Quitter la partie et Recommencer marchent de nouveau depuis la pause, même avec les animations réduites.',
+        'Nouveau réglage : la sensibilité de la souris (Paramètres, onglet Commandes, où sont aussi les touches).',
+      ],
+    },
     {
       version: '0.5.15',
       date: '23/11/2026',

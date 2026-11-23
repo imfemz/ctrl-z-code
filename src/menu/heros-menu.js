@@ -21,6 +21,7 @@
 // Aucune allocation par image (vecteurs et matrices créés à l'init).
 import * as THREE from 'three';
 import { chargerPieces } from '../anim/pieces.js';
+import { surfaceDos, profilBras, profilJambe } from '../anim/dos-reel.js'; // skins, tâche 2 : cape du menu sur le dos réel, membres réels
 import { glitchOeil } from '../anim/oeil-glitch.js';
 import { ANIM } from '../anim/reglages.js';
 import { appliquerTexturesArmes, createPaintedMaterial } from '../rendu/materiaux.js';
@@ -210,7 +211,15 @@ export async function creerHeros({ scene, base, solY, camera, evenement }) {
   const vd = vides.cape_epaule_d ? vides.cape_epaule_d.position : [-0.189, 1.513, -0.161];
   const ud = vides.cape_dos ? vides.cape_dos.userData : {};
   const dos = ud.a && ud.b && ud.rayon ? { a: ud.a, b: ud.b, rayon: ud.rayon } : { a: [0, 1.054, -0.029], b: [0, 1.437, -0.029], rayon: 0.153 };
-  capeMod.init({ scene, ancrageG: vg, ancrageD: vd, dos, jambes: { a: [0, 0.6, 0], b: [0, 0.61, 0], rayon: 0 }, corps: d });
+  // membres réels (2e revue du 22/11) : mêmes capsules qu'en jeu (heros-anim bras() / jambe() : épaule − 5 cm → main =
+  // avant-bras + MAIN_LOCAL ; hanche → pied + capeLocal) et même rayon lu sur le maillage le long de leur axe
+  const MAIN_LOCAL = [0, -0.4, 0.04];
+  const PIED_LOCAL = ANIM.heros.pied.capeLocal;
+  capeMod.init({
+    scene, ancrageG: vg, ancrageD: vd, dos, jambes: { a: [0, 0.6, 0], b: [0, 0.61, 0], rayon: 0 }, surface: surfaceDos(geometry, pieces),
+    bras: [profilBras(geometry, pieces, 'bras_g', 'avant_bras_g', MAIN_LOCAL), profilBras(geometry, pieces, 'bras_d', 'avant_bras_d', MAIN_LOCAL)],
+    jambesReelles: [profilJambe(geometry, pieces, 'g', PIED_LOCAL), profilJambe(geometry, pieces, 'd', PIED_LOCAL)],
+  });
   const capeMesh = capeMod.getMesh();
   capeMesh.name = 'menu-cape';
 
@@ -1141,20 +1150,23 @@ export async function creerHeros({ scene, base, solY, camera, evenement }) {
     mesh.updateMatrixWorld(true);
   }
 
+  const TIBIA_PIED = [0, -0.53, 0.06];
+  /** Capsule k de la cape en monde : os oa (décalé de dy en y) → point local `loc` de l'os ob (aucune allocation). */
+  function capsuleMembre(k, oa, ob, loc, dy, rayon) {
+    oa.getWorldPosition(v1);
+    v2.set(loc[0], loc[1], loc[2]);
+    ob.localToWorld(v2);
+    capeMod.setCapsuleMonde(k, v1.x, v1.y + dy, v1.z, v2.x, v2.y, v2.z, rayon);
+  }
+
   /** Cape, éclairs et traçantes : après update (la pose de l'image est faite). vent : m/s sur X. */
   function sync(dt, vent) {
-    // capsules des bras et des jambes en monde (la cape ne les traverse pas)
-    const capsule = (k, oa, ob, rayon) => {
-      oa.getWorldPosition(v1);
-      ob.getWorldPosition(v2);
-      // prolonge jusqu'à la main / au pied
-      v2.addScaledVector(v3.copy(v2).sub(v1), 1.1);
-      capeMod.setCapsuleMonde(k, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, rayon);
-    };
-    capsule(0, os.bras_g, os.avant_bras_g, 0.1);
-    capsule(1, os.bras_d, os.avant_bras_d, 0.1);
-    capsule(2, os.jambe_g, os.tibia_g, 0.11);
-    capsule(3, os.jambe_d, os.tibia_d, 0.11);
+    // capsules des bras et des jambes en monde (la cape ne les traverse pas) : mêmes points qu'en jeu ; le rayon vient
+    // des profils réels passés à capeMod.init (0,10 / 0,11 : repli si un profil manque)
+    capsuleMembre(0, os.bras_g, os.avant_bras_g, MAIN_LOCAL, -0.05, 0.1);
+    capsuleMembre(1, os.bras_d, os.avant_bras_d, MAIN_LOCAL, -0.05, 0.1);
+    capsuleMembre(2, os.jambe_g, os.pied_g || os.tibia_g, os.pied_g ? PIED_LOCAL : TIBIA_PIED, 0, 0.11);
+    capsuleMembre(3, os.jambe_d, os.pied_d || os.tibia_d, os.pied_d ? PIED_LOCAL : TIBIA_PIED, 0, 0.11);
     capeM.multiplyMatrices(buste.matrixWorld, decaleTaille);
     const C = ANIM.cape;
     const s0 = C.souffle;

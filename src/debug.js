@@ -102,8 +102,13 @@ export function init(context) {
   hooks = {
     version: 2,
     snapshot,
-    // écran titre 3D (§ Z octies) : l'objet de src/menu/menu.js (null avant son arrivée) — captures pilotées (allerA)
+    // écran titre (null avant son arrivée) : l'accueil peint (src/menu/accueil.js, tâche 7) ; avec ?fbx= / ?modele= /
+    // ?anim= (outil de cuisson, tests/cuire-anim.mjs), la scène 3D de src/menu/menu.js (heros.cuire, allerA…)
     menu: () => ctx.menu,
+    // tâche 7 : l'accueil peint ({ afficher, cacher, image, etat() → { agent, skin, particules, visible } }) ; null en mode outil
+    accueil: () => ctx.accueil || null,
+    // Écran Agents : état de la vitrine (pause-agent.inspect().vitrine) ; idles.chargees = idles de vitrine cuits arrivés
+    vitrine: () => ({ ...(ctx.pauseAgent ? ctx.pauseAgent.inspect({}).vitrine : {}), idles: { chargees: ctx.pauseAgent ? ctx.pauseAgent.idlesVitrineChargees() : 0 } }),
     // équivalents des touches
     finishWave,
     addFragments,
@@ -122,9 +127,13 @@ export function init(context) {
     provoquerErreur: (n) => A.provoquerErreur(n), // § E5.X2 : n images lèvent une erreur (filet de la boucle)
     resume: () => A.resume(),
     restart: () => A.restart(),
-    // § E2.D : agents, relance / passe / bannissement (mêmes gardes et mêmes valeurs de retour que ctx.actions)
-    chooseAgent: (id) => apresAgent(A.chooseAgent(id)),
-    quitAgent: () => A.quitAgent(),
+    // Écran Agents (tâche 5) : grille / fiche (mêmes gardes et mêmes valeurs de retour que ctx.actions)
+    agentsOuvrir: (origine, a, skin) => A.agentsOuvrir(origine, a, skin),
+    agentFiche: (a) => A.agentFiche(a),
+    agentJouer: (a) => apresAgent(A.agentJouer(a)),
+    agentRetour: () => A.agentRetour(),
+    agentSkin: (a, skin) => A.agentSkin(a, skin), // tâche 6 : vrai = choisi ; faux = seulement visé (verrouillé) ou refusé
+    // § E2.D : relance / passe / bannissement
     rerollChoices: () => A.rerollChoices(),
     skipChoice: () => A.skipChoice(),
     banishChoice: (index) => A.banishChoice(index),
@@ -382,14 +391,6 @@ export function init(context) {
       return true;
     },
     grantWeapon: (w) => ctx.weapons.unlock(w),
-    /** 16/11 (point 3) : demande de frappe éclair, comme la touche A / E (s de validité, défaut 0,25). */
-    strike(seconds = 0.25) {
-      P.strikeReq = Number.isFinite(seconds) && seconds > 0 ? seconds : 0.25;
-      return P.strikeReq;
-    },
-    /** 16/11 (points 3, 7) : touches de la frappe, pseudo. */
-    strikeKeys: () => ctx.input.actionCodes(16),
-    bindStrike: (codes) => ctx.input.bindAction(16, codes, false),
     /** § E4.D : touches réglées, état du stockage, aides affichées (tests/e4-touches.test.mjs). */
     touches: () => ctx.input.inspectTouches({}),
     touchesUI: () => ctx.ui.touchesInspect(),
@@ -644,6 +645,9 @@ export function init(context) {
     /** Préréglage de la méta : 'vierge' | 'depart' | 'tout' (en mémoire) | 'stockage' (relit le stockage). */
     metaPreset: (name) => ctx.meta.debugPreset(name),
     metaBuy: (key) => ctx.meta.buy(key),
+    /** Skins (tâche 3) : skin porté et état de déblocage (lecture seule), et choix d'un skin. */
+    skinsMeta: (a, s) => ({ choisi: meta.skinChoisi(a), debloque: meta.skinDebloque(a, s) }),
+    skinChoisir: (a, s) => meta.choisirSkin(a, s),
     metaCycles: (n) => ctx.meta.debugSetCycles(n),
     metaForSale: () => ctx.meta.forSale([]),
     metaProgress: (s) => ctx.defis.progress(s, {}),
@@ -660,11 +664,11 @@ export function init(context) {
     lacet: (deg, immediat = true) => ctx.camera.setLacet(deg, immediat), // tests : lacet de la caméra (mode Souris)
     deplacement: (cle) => A.setDeplacement(cle), // § E5.AB : réglage « Déplacement » (même chemin que la fenêtre Paramètres)
     //#endregion e5:AB-camera-3p
+    sensibilite: (v) => A.setSensibilite(v), // § E5.AG : réglage « Sensibilité de la souris » (même chemin que la fenêtre)
     oublierCurseur: () => ctx.input.oublierCurseur(), // § E5.U : comme au chargement (curseur jamais bougé)
     hubMove: (dx, dy) => ctx.ui.hubMove(dx, dy),
     hubConfirm: () => ctx.ui.hubConfirm(),
     hubBuy: (key) => A.hubBuy(key),
-    hubAgent: (a) => apresAgent(A.hubAgent(a)),
     hubPlay: (a) => apresAgent(A.hubPlay(a)), // § E4.L.1 : a = l'agent de la fiche (sans a : l'agent de départ, comme avant)
     /** Onglet, zone, case visée, cases de la Collection (vues, verrous, recettes révélées), parallaxe. */
     hubInfo: () => ctx.ui.hubInspect(),
@@ -676,6 +680,13 @@ export function init(context) {
     tutoBornes: (on = true) => ctx.consignes.forcerBornes(on),
     tutoBornesInfo: () => ctx.consignes.inspectBornes({}),
     tutoBornesEcran: () => ctx.consignes.ecranBornes(),
+    //#region e5:AK-mort-claire
+    // § E5.AK : ralenti, recadrage et flèche du coup mortel (coupés en ?debug sauf demande) ; multi simulé (solo false)
+    mortClaire: (on = true) => ctx.mortClaire.forcer(on),
+    mortClaireSolo: (on = true) => ctx.mortClaire.solo(on),
+    mortClaireInfo: () => ctx.mortClaire.inspect({}),
+    mortClaireEcran: () => ctx.mortClaire.ecran({}),
+    //#endregion e5:AK-mort-claire
     consigneVue: (key) => ctx.meta.consigneVue(key), // § E5.L
     notesToggle: () => ctx.ui.notesToggle(),
     bilanInfo: () => ctx.ui.bilanInspect(), // § E4.C : bilan de l'écran de fin (textes affichés, montée des Cycles)
@@ -1025,7 +1036,7 @@ function snapshot() {
   ctx.ui.inspect((s.ui = {}));
   inspect((s.perf = {}));
   s.debug = { invincible, frozen, crit, knockback, autoPick, sandbox, overlay: overlayOn };
-  s.settings = { shake: game.settings.shake, volume: game.settings.volume, zoom: game.settings.zoom, sfx: game.settings.sfx, musique: game.settings.musique, graphismes: game.settings.graphismes, deplacement: game.settings.deplacement }; // zoom : § E2.E ; sfx, musique, graphismes : réglages de Femz (21/11)
+  s.settings = { shake: game.settings.shake, volume: game.settings.volume, zoom: game.settings.zoom, sfx: game.settings.sfx, musique: game.settings.musique, graphismes: game.settings.graphismes, deplacement: game.settings.deplacement, sensibilite: game.settings.sensibilite }; // § E5.AG : sensibilite ; zoom : § E2.E ; sfx, musique, graphismes : réglages de Femz (21/11)
   const b = game.best;
   s.best = b ? { wave: b.wave, kills: b.kills, level: b.level, time: b.time } : null;
   s.recordBeaten = !!game.recordBeaten; // § E1.D : record battu pendant cette partie

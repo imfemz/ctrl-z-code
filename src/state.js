@@ -128,7 +128,6 @@ export const P = {
   dashDirX: 0,
   dashDirZ: -1,
   invulnT: 0,
-  strikeReq: 0, // 16/11 (point 3) : s restantes de la demande de frappe éclair (touche A / E, gardée STRIKE_KEYS.bufferSeconds)
   dashReq: 0, // § E5.X6 (D3) : s restantes de la demande de dash (gardée ACTIONS_IMPOSSIBLES.dash.tampon)
 };
 
@@ -303,3 +302,12 @@ export function seedRandom(seed) {
   seeds[WAVE] = (seed ^ 0x9e3779b9) | 0;
   seeds[EVENT] = (seed ^ EVENT_SALT) | 0;
 }
+
+//#region e5:AK-mort-claire
+/**
+ * § E5.AK : origine du PROCHAIN coup au joueur quand elle n'est pas son point d'impact — [x, z, 1 si écrite]. Écrite
+ * par l'auteur juste avant damage.explode / hitPlayer (obus d'un robot : là d'où il est parti), effacée par lui juste
+ * après ; hitPlayer la retient dans damage.MORT_POS si le coup tue.
+ */
+export const ORIGINE_COUP = new Float64Array(3);
+//#endregion e5:AK-mort-claire

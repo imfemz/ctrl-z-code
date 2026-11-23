@@ -41,6 +41,7 @@ import * as shop from './shop.js';
 import * as fx from './fx.js';
 import * as soinHeros from './soin-heros.js'; // § E5.Q (B14) : retour propre au soin du héros
 import { CAUSE_COUNT, CAUSE_GROUPE, CAUSE_GROUPE_COUNT, CAUSE_TEXTE, RETOURS_GUIDE } from './config.js'; // § E5.Q (C2)
+import { MORT_CLAIRE } from './config.js'; // § E5.AK : une phrase par cause à l'écran de fin
 import * as ui from './ui.js';
 import * as hudVoile from './hud-voile.js'; // § E5.M (B11) : le HUD du haut s'efface quand le boss passe dessous
 import * as silhouetteHeros from './silhouette-heros.js'; // § E5.P (B1) : silhouette du héros dans la foule, par-dessus tout
@@ -53,7 +54,7 @@ import * as memoire from './memoire.js'; // § E5.K : attente du modèle de l'ag
 import * as incident from './incident.js'; // § E5.X2 : erreur pendant une image, sauvegarde abîmée
 import { MEMOIRE } from './config.js'; // § E5.X2 : textes de l'avis de sauvegarde
 import * as vfx from './vfx/projectiles.js'; // projectiles « toon » (§ Z septies) : lots écrits par weapons et enemies
-import { creerMenu } from './menu/menu.js'; // écran titre 3D (§ Z octies) : scène à part, rendue par le renderer du jeu
+import { creerAccueil } from './menu/accueil.js'; // écran titre peint (Écran Agents, tâche 7) : fond + agent choisi en vitrine 3D + poussière
 import * as agents from './agents.js'; // § E2.D : les trois agents
 import * as items from './items.js'; // § E2.F : objets passifs
 import * as domeParefeu from './vfx/dome-parefeu.js'; // § E5.B : dôme hexagonal du Pare-feu (1 appel de dessin quand on l'a)
@@ -67,6 +68,7 @@ import { TPRET } from './terminal.js';
 import * as props from './props.js'; // § E3.C : décors cassables
 import * as inviteInteragir from './invite-interagir.js'; // § E5.C : invite « touche » au-dessus de la borne prête
 import { ACTION_INTERACT } from './config.js'; // § E5.C : action « Interagir » (coup de pied sur une borne)
+import { skinsDe } from './config.js'; // Écran Agents : skin visé dans la fiche
 import { ACTION_FICHE } from './config.js'; // menus « Pile » (19/11) : Tab = fiche de l'agent
 import * as utilities from './utilities.js'; // § E3.C : utilitaires
 import * as ramassage from './ramassage.js'; // § E5.E.2 : compteurs de ramassage (lus par le récap de ui.js)
@@ -81,6 +83,7 @@ import { E } from './state.js'; // § E3.K : robots en vie reportés
 import * as evolutions from './evolutions.js'; // § E3.B : évolutions des armes
 import * as meta from './meta.js'; // § E3.0.3 : méta-progression (socle 2)
 import * as consignes from './consignes.js'; // § E5.L : consignes une fois par profil
+import * as mortClaire from './mort-claire.js'; // § E5.AK : cause de la mort évidente (ralenti en solo, caméra, repère)
 import * as defis from './defis.js'; // § E4.A : compteurs et succès de la partie
 import { META } from './config.js'; // § E4.A : paramètre ?debug&meta=
 import { HEROS_IDLE } from './config.js'; // § E4.E.3 : Warrior Idle (fiche et partie)
@@ -90,7 +93,7 @@ import { COUP_DE_PIED } from './config.js'; // § E4.O : coup de pied cuit
 import * as coupPiedCuit from './anim/coup-pied.js'; // § E4.O
 import * as bondCuit from './anim/bond-cuit.js'; // § E5.F : « Jump Attack » du bond du Bastion
 import { BOND_CUIT } from './config.js'; // § E5.F
-import { IDLES_AGENTS } from './config.js'; // § E5.F : idle de chaque agent
+import { IDLES_AGENTS, VITRINE } from './config.js'; // § E5.F : idle de chaque agent ; VITRINE : idles de l'écran Agents
 import * as herosIdles from './anim/heros-anim.js'; // § E5.F : setIdleAgent, setIdleMarteau
 import { DEFIS } from './config.js'; // § E4.C : noms des succès de la partie au bilan
 import * as bilan from './bilan.js'; // § E4.C : bilan par arme de l'écran de fin
@@ -100,6 +103,10 @@ import * as pseudo from './pseudo.js'; // 16/11 (R7)
 import * as pauseAgent from './pause-agent.js'; // § E3.I : l'agent en 3D dans la fiche de la pause
 
 const params = new URLSearchParams(location.search);
+// Écran Agents, tâche 7 : l'ancienne scène 3D du titre (src/menu/menu.js : héros, boss, grille) n'est plus chargée que
+// pour l'OUTIL de cuisson des animations (tests/cuire-anim.mjs : ?fbx= / ?modele= ; banque UAL : ?anim=) — elle y sert
+// d'écran titre ; sinon l'écran titre est l'accueil peint (src/menu/accueil.js).
+const SCENE_OUTIL = params.has('fbx') || params.has('modele') || params.has('anim');
 
 /** État de la machine (§ D.1). Seul main.js y écrit. */
 const game = {
@@ -115,7 +122,7 @@ const game = {
   modeles: 'chargement',
   // Scène 3D de l'écran titre (§ Z octies) : 'chargement' → 'pret' (ou 'erreur' : fond uni, le jeu reste jouable).
   menu: 'chargement',
-  settings: { shake: SHAKE.defaultIntensity, volume: AUDIO.masterVolume, sfx: 1, musique: 1, graphismes: REGLAGES.graphismesDefaut, deplacement: params.has(DEBUG.urlFlag) ? REGLAGES.deplacementDefautDebug : REGLAGES.deplacementDefaut, migrDeplacement: 1, flashs: REGLAGES.flashsDefaut }, // § E5.AB.13 : Souris par défaut (tests ?debug : Clavier) ; marque de la migration unique vers Souris (écrite avec les réglages) // sfx, musique, graphismes : réglages de Femz (21/11)
+  settings: { shake: SHAKE.defaultIntensity, volume: AUDIO.masterVolume, sfx: 1, musique: 1, graphismes: REGLAGES.graphismesDefaut, deplacement: params.has(DEBUG.urlFlag) ? REGLAGES.deplacementDefautDebug : REGLAGES.deplacementDefaut, migrDeplacement: 1, flashs: REGLAGES.flashsDefaut, sensibilite: REGLAGES.sensibilite.defaut }, // § E5.AG : sensibilité de la souris ; § E5.AB.13 : Souris par défaut (tests ?debug : Clavier) ; marque de la migration unique vers Souris (écrite avec les réglages) // sfx, musique, graphismes : réglages de Femz (21/11)
   best: null,
   // § E1.D : le record a été battu PENDANT cette partie (bannière et son joués une fois ; la pastille du HUD passe au cyan)
   recordBeaten: false,
@@ -129,25 +136,24 @@ actions.skipLots = skipLots;
 actions.banishLot = banishLot;
 actions.armBanish = armBanish; // § E2.C et § E2.D : un seul bouton « Bannir », aiguillé par l'état (CHEST ou LEVELUP)
 actions.skipChestAnimation = skipChestAnimation;
-// § E2.D : choix de l'agent ; relance, passe et bannissement au choix de niveau
-actions.chooseAgent = chooseAgent;
-actions.quitAgent = quitAgent;
+// § E2.D : relance, passe et bannissement au choix de niveau
 actions.rerollChoices = rerollChoices;
 actions.skipChoice = skipChoice;
 actions.banishChoice = banishChoice;
 actions.closeFusion = closeFusion; // § E3.F
+// Écran Agents (tâche 5) : grille des agents (« Jouer » du titre, onglet Agents du Noyau), fiche perso (tâche 6)
+actions.agentsOuvrir = agentsOuvrir;
+actions.agentFiche = agentFiche;
+actions.agentJouer = agentJouer;
+actions.agentRetour = agentRetour;
+actions.agentSkin = agentSkin;
 // § E4.B : le hub « Noyau »
 actions.openHub = enterHub;
 actions.quitHub = quitHub;
-actions.hubAgent = hubAgent;
 actions.hubPlay = hubPlay;
 actions.hubBuy = hubBuy;
 actions.hubReset = hubReset;
 actions.hubGuard = hubGuard;
-// § E4.L.1 : portrait 3D de la fiche au Noyau (agent du sélecteur, silhouette s'il est verrouillé ; a < 0 : fermé)
-// § E5.W : un agent débloqué dont le modèle est en lecture (ou attendu avec ceux du démarrage) → état « Chargement »,
-// jamais son image pixel
-actions.hubPortrait = (a, verrou) => pauseAgent.openHub(a, verrou, !verrou && a >= 0 && a < AGENT_COUNT && (agentsEnLecture[a] === 1 || game.modeles === 'chargement'));
 // § E5.K (tests, debug.js) : promesse de la lecture en cours du modèle de run.agent (null : rien en lecture). Elle se résout
 // à l'arrivée des données ; elles sont posées par l'image suivante (agentsTraiter).
 actions.attenteAgent = () => agentsPromesses[run.agent];
@@ -156,7 +162,7 @@ const ctx = {
   canvas: document.getElementById('game'),
   uiRoot: document.getElementById('ui-root'),
   renderer: null, // rempli par render.init
-  menu: null, // scène de l'écran titre (src/menu/menu.js), remplie à son arrivée (§ Z octies)
+  menu: null, // écran titre (src/menu/accueil.js ; outil de cuisson : src/menu/menu.js), rempli à son arrivée (§ Z octies)
   scene: null, // rempli par render.init
   game,
   actions,
@@ -180,16 +186,26 @@ ctx.pseudo = pseudo; // 16/11 (R7) : pseudo du joueur (stockage), lu par ui
 ctx.meta = meta; // § E3.0.3 (lu par ui : fiche de la pause, recettes de fusion découvertes — fusion du groupe 2)
 ctx.consignes = consignes; // § E5.L : bulles de consigne (lues par ui.js : construites dans le HUD, mises à jour par ui.update)
 ctx.defis = defis; // § E4.A (lu par ui : textes des notifications ; par le hub : progression des succès)
+ctx.mortClaire = mortClaire; // § E5.AK (lu par debug : crochets des tests)
 
 // Privé à la machine
 let savedStateTime = 0; // stateTime de l'état interrompu par PAUSED ou LEVELUP
 // § E2.D : bannissement armé (touche B ou bouton « Bannir ») — le prochain choix de carte bannit au lieu de prendre
 let banArmed = false;
-// § E2.D : l'écran de choix de l'agent est sauté en ?debug (les tests lancent le jeu en debug), sauf ?debug&agent=choix
+// § E2.D : l'écran Agents (grille puis fiche, tâches 5 et 6) est sauté en ?debug (les tests lancent le jeu en debug), sauf ?debug&agent=choix
 const agentParam = params.get(AGENT_SCREEN.urlParam);
 const agentScreenOff = params.has(DEBUG.urlFlag) && agentParam !== AGENT_SCREEN.urlChoice;
-const agentView = { agents: AGENTS, current: 0, best: null };
-const hubView = { best: 0, agent: 0, tab: 0 }; // § E4.B : vue du hub (vague record, agent de départ, onglet à l'ouverture)
+// Écran Agents (tâche 5) : vue grille ou fiche ; origine : d'où il a été ouvert (« Retour » de la grille y ramène) ;
+// agent : la carte visée (grille) ou l'agent de la fiche ; skinVise : le skin regardé dans la fiche (tâche 6)
+const agentView = { vue: 'grille', origine: 'titre', agent: 0, skinVise: null, best: null };
+// Écran Agents (tâche 6) : agent montré par la vitrine 3D de la fiche (-1 : aucune). Son modèle est lu s'il ne l'est pas
+// (§ E5.K) et GARDÉ tant que sa fiche est ouverte, même s'il n'est pas l'agent de la partie ; libéré à sa fermeture.
+let agentVitrine = -1;
+const ONGLET_AGENTS = HUB.onglets.findIndex((o) => o.key === 'agents');
+const ONGLET_COLLECTION = HUB.onglets.findIndex((o) => o.key === 'collection');
+const hubView = { best: 0, agent: 0, tab: ONGLET_COLLECTION }; // § E4.B : vue du hub (vague record, agent de départ, onglet à l'ouverture)
+let ongletNoyau = ONGLET_COLLECTION; // onglet du Noyau ouvert avant l'écran Agents (« Retour » y ramène, jamais Agents)
+const agentMove = new Int8Array(2); // Écran Agents : direction des flèches à l'image précédente (fronts)
 const hubMove = new Int8Array(2); // § E4.B : direction des flèches à l'image précédente (fronts des flèches dans le hub)
 const shopMoveMem = new Int8Array(2); // § E4.S.8 : idem dans le marchand (focus des lignes d'achat)
 let arrivalStarted = false; // shop.beginArrival() déjà appelé pour cette vague
@@ -221,7 +237,6 @@ function prechaufferSansBloquer() {
     shadersEnAttente--;
     render.prewarm();
     pauseAgent.prechauffer(); // programme du portrait de la pause (§ E3.I), si le héros est posé
-    if (game.state === STATE.HUB) ui.refreshScreen(hubView); // § E5.W : Noyau ouvert pendant le chargement → portrait 3D
     tenterPublier();
   });
 }
@@ -236,9 +251,9 @@ const agentsPromesses = new Array(AGENT_COUNT).fill(null); // lecture en cours (
 let lancementDemande = null; // état (STATE.*) où « Jouer » attend le modèle de run.agent ; null : rien en attente
 const agentsInfo = { lus: 0, liberes: 0, ms: 0 }; // tests (§ E5.K)
 
-// Écran titre 3D (§ Z octies) : chargé en arrière-plan après render.init (même renderer, UN seul contexte WebGL) ;
-// branché au début de l'image qui suit son arrivée. Affiché à l'état TITLE, caché (cibles de rendu libérées, scène
-// gardée) dès le lancement d'une partie.
+// Écran titre (tâche 7 : l'accueil peint ; outil de cuisson : la scène 3D de menu.js) : chargé en arrière-plan après
+// render.init (même renderer, UN seul contexte WebGL) ; branché au début de l'image qui suit son arrivée. Affiché aux états
+// TITLE et HUB (le Noyau est posé dessus), caché à l'écran Agents (plein écran, opaque) et dès le lancement d'une partie.
 let menu = null;
 let menuArrive = null;
 let menuNouveau = false;
@@ -294,6 +309,7 @@ function loadSave() {
       }
       //#endregion e5:AB-camera-3p
       if (o && REGLAGES.flashs.some((g) => g.key === o.flashs)) game.settings.flashs = o.flashs; // § E5.X5
+      if (o && Number.isFinite(o.sensibilite) && o.sensibilite >= REGLAGES.sensibilite.min && o.sensibilite <= REGLAGES.sensibilite.max) game.settings.sensibilite = o.sensibilite; // § E5.AG
     }
   } catch (e) {
     /* valeurs par défaut */
@@ -362,6 +378,7 @@ function saveSettings() {
 import { CAMERA } from './config.js'; // § E3.L (import remonté par le module, comme tout import)
 import { REGLAGES } from './config.js'; // réglages de Femz (21/11) : graphismes, volumes, secousses
 import { CONFORT_FLASHS } from './config.js'; // § E5.X5 : réglage « Flashs »
+import { SENSIBILITE_SOURIS } from './config.js'; // § E5.AG : réglage « Sensibilité de la souris »
 let cameraASauver = false; // réglage changé en combat : enregistré au prochain écran hors combat (JSON jamais en combat)
 
 /** Au chargement, après loadSave : le réglage sauvé est posé sans transition ; clé inconnue ou absente → par défaut. */
@@ -554,6 +571,7 @@ function resetAll() {
   vfx.reset(); // lots vides, horloge des effets datés à 0
   audio.reset();
   camera.reset();
+  mortClaire.reset(); // § E5.AK : plus de ralenti en cours, caméra rendue au héros, flèche cachée
   grid.reset();
   input.reset();
   ui.reset();
@@ -620,6 +638,7 @@ function enterTitle() {
   titleView.graphismes = game.settings.graphismes;
   titleView.deplacement = game.settings.deplacement;
   titleView.flashs = game.settings.flashs; // § E5.X5
+  titleView.sensibilite = game.settings.sensibilite; // § E5.AG
   fillTitleLoading();
   ui.setScreen(SCREEN.TITLE, titleView);
   afficherMenu();
@@ -627,14 +646,14 @@ function enterTitle() {
   audio.setAmbiance(MENU.son.ambiance, MENU.son.fonduAmbiance);
 }
 
-/** Scène du menu affichée (TITLE) : boucle d'images, cibles de rendu recréées, adaptation de qualité suspendue. */
+/** Écran titre affiché (TITLE, HUB) : agent choisi relu (vitrine), adaptation de qualité suspendue. */
 function afficherMenu() {
   if (menu === null) return;
   menu.afficher();
   render.setAdaptivePaused(true);
 }
 
-/** Scène du menu cachée (partie) : cibles de rendu libérées, scène gardée pour le prochain retour au titre. */
+/** Écran titre caché (partie) : vitrine du titre fermée, calque caché (gardé pour le prochain retour au titre). */
 function cacherMenu() {
   if (menu === null) return;
   menu.cacher();
@@ -661,7 +680,7 @@ function enterCountdown() {
 }
 
 /**
- * T2. § E2.D : sans identifiant, « Jouer » mène à l'écran de choix de l'agent (T2 modifié → AGENT) ; avec un
+ * T2. § E2.D : sans identifiant, « Jouer » mène à l'écran Agents (grille, T2 modifié → AGENT) ; avec un
  * identifiant (ou en ?debug, écran sauté), la partie démarre tout de suite avec cet agent (ou l'agent courant).
  */
 function start(agentId) {
@@ -677,7 +696,7 @@ function start(agentId) {
     return false;
   }
   departDemande = false;
-  if (agentId === undefined && !agentScreenOff) return enterAgent();
+  if (agentId === undefined && !agentScreenOff) return agentsOuvrir('titre');
   if (agentId !== undefined && !agents.setAgent(agentId)) return false;
   launch();
   return true;
@@ -693,6 +712,7 @@ function launch() {
   }
   lancementDemande = null;
   memoire.attente(false);
+  fermerVitrine(); // Écran Agents : partie lancée depuis la fiche (rien si elle n'est pas ouverte)
   cacherMenu();
   audio.setAmbiance(AUDIO.ambiance.gain, MENU.son.fonduLancement); // nappe ramenée au niveau du jeu
   resetAll();
@@ -701,26 +721,132 @@ function launch() {
   enterCountdown();
 }
 
-/** T2 (modifié, § E2.D) : écran de choix de l'agent ; la scène 3D du titre reste derrière. */
-function enterAgent() {
+/**
+ * T2 (Écran Agents, tâche 5) : l'écran Agents s'ouvre depuis le titre (« Jouer ») ou le Noyau (onglet Agents, récompense
+ * « agent » ou « skin » de l'onglet Succès). Sans agent : la grille, carte du dernier agent joué visée ; avec un agent a :
+ * sa fiche (skinKey visé s'il existe, sinon le skin choisi). Écran pleine page : la scène derrière n'est pas rendue (F14).
+ * Rend faux hors de l'état d'origine attendu.
+ */
+function agentsOuvrir(origine, a, skinKey) {
+  const noyau = origine === 'noyau';
+  if (game.state !== (noyau ? STATE.HUB : STATE.TITLE)) return false;
+  if (noyau) ongletNoyau = ui.hubOnglet();
   setState(STATE.AGENT);
   agentDeDepart(); // § E4.B : un déblocage gagné à la partie précédente rend l'agent choisissable tout de suite
-  agentView.current = agents.getAgent();
+  const fiche = Number.isInteger(a) && a >= 0 && a < AGENT_COUNT;
+  agentView.origine = noyau ? 'noyau' : 'titre';
+  agentView.vue = fiche ? 'fiche' : 'grille';
+  agentView.agent = fiche ? a : agents.getAgent();
+  agentView.skinVise = fiche ? skinVise(agentView.agent, skinKey) : null;
   agentView.best = game.best;
+  agentMove.fill(0);
+  if (menu !== null) menu.cacher(); // tâche 7 : écran plein écran opaque — l'écran titre (et sa vitrine) est caché
   ui.setScreen(SCREEN.AGENT, agentView);
+  if (fiche) ficheVitrine();
   return true;
 }
 
-/** T2b : agent choisi (clic sur une carte, 1 / 2 / 3, ou Entrée pour l'agent courant) → la partie démarre. */
-function chooseAgent(id) {
-  if (game.state !== STATE.AGENT || game.stateTime < AGENT_SCREEN.guardSeconds) return false;
-  if (!agents.setAgent(id)) {
-    audio.play(SFX.BUY_DENIED); // § E4.B.3 : agent verrouillé — refus, rien ne démarre
+/**
+ * Fiche (tâche 6) : la vitrine 3D montre agentView.agent — en silhouette s'il est verrouillé ou si le skin visé l'est.
+ * Son modèle est lu s'il n'est pas là (état « Chargement » de la vitrine jusqu'à son arrivée, agentsTraiter le garde).
+ * Hors image (ouverture de la fiche, skin visé).
+ */
+function ficheVitrine() {
+  const a = agentView.agent;
+  if (agentVitrine !== a) libererVitrine();
+  agentVitrine = a;
+  lireModele(a);
+  const k = AGENTS[a].key;
+  const verrou = meta.agentVerrouille(a) || !meta.skinDebloque(k, agentView.skinVise);
+  pauseAgent.openVitrine(a, { cadre: 'fiche', verrou, toile: ui.agentsToile() });
+}
+
+/** Fiche fermée (retour à la grille, partie lancée) : vitrine fermée, modèle de son agent libéré s'il n'est pas celui de la partie. */
+function fermerVitrine() {
+  pauseAgent.closeVitrine();
+  libererVitrine();
+  agentVitrine = -1;
+}
+
+/** § E5.K : le modèle gardé pour la fiche (agent ≠ celui de la partie) est rendu (données, puis glTF du cache). */
+function libererVitrine() {
+  const a = agentVitrine;
+  if (a < 0 || a === run.agent) return;
+  if (player.libererModele(a)) {
+    oublierAgent(a);
+    agentsInfo.liberes++;
+  }
+}
+
+/** Skin regardé dans la fiche de l'agent a : skinKey s'il est un skin de l'agent, sinon son skin choisi. */
+function skinVise(a, skinKey) {
+  const k = AGENTS[a].key;
+  return skinsDe(k).includes(skinKey) ? skinKey : meta.skinChoisi(k);
+}
+
+/** Clics et touches de l'écran Agents ignorés pendant AGENT_SCREEN.guardSeconds à l'ouverture. */
+function agentGarde() {
+  return game.state === STATE.AGENT && game.stateTime >= AGENT_SCREEN.guardSeconds;
+}
+
+/** Grille → fiche de l'agent a (verrouillé compris : on la regarde ; « Jouer » y reste refusé). */
+function agentFiche(a) {
+  if (!agentGarde() || !(Number.isInteger(a) && a >= 0 && a < AGENT_COUNT)) return false;
+  agentView.vue = 'fiche';
+  agentView.agent = a;
+  agentView.skinVise = skinVise(a);
+  audio.play(SFX.UI_OPEN);
+  ui.refreshScreen(agentView);
+  ficheVitrine();
+  return true;
+}
+
+/**
+ * Fiche : clic / Entrée sur la vignette du skin skinKey de l'agent a. Débloqué : il devient le skin choisi (gardé dans la
+ * sauvegarde) et la vitrine le montre — vrai. Verrouillé : il est seulement VISÉ (sa condition s'affiche, l'agent en
+ * silhouette, « Jouer » part avec le skin choisi et le dit) — faux. Skin inconnu, autre agent que celui de la fiche : faux.
+ */
+function agentSkin(a, skinKey) {
+  if (!agentGarde() || agentView.vue !== 'fiche' || a !== agentView.agent) return false;
+  const k = AGENTS[a].key;
+  if (!skinsDe(k).includes(skinKey)) return false;
+  agentView.skinVise = skinKey;
+  const choisi = meta.choisirSkin(k, skinKey);
+  audio.play(SFX.UI_CLICK);
+  ui.refreshScreen(agentView);
+  ficheVitrine();
+  return choisi;
+}
+
+/**
+ * « Jouer · <agent> » : la partie démarre avec l'agent a (débloqué) et son skin choisi ; il devient l'agent de départ
+ * (gardé). Verrouillé, inconnu ou modèles des unités pas encore là : refus (BUY_DENIED), rien ne démarre.
+ */
+function agentJouer(a) {
+  if (!agentGarde()) return false;
+  if (!(Number.isInteger(a) && a >= 0 && a < AGENT_COUNT) || game.modeles !== 'pret' || !agents.setAgent(a)) {
+    audio.play(SFX.BUY_DENIED);
     return false;
   }
   saveAgent();
   launch();
   audio.play(SFX.AGENT_SELECT); // après resetAll (audio.reset) : le son du choix couvre le « 3 » du compte à rebours
+  return true;
+}
+
+/** « Retour » (Échap) : fiche → grille (sa carte visée) ; grille → titre, ou Noyau sur l'onglet ouvert avant. */
+function agentRetour() {
+  if (game.state !== STATE.AGENT) return false;
+  audio.play(SFX.UI_CLICK);
+  if (agentView.vue === 'fiche') {
+    agentView.vue = 'grille';
+    agentView.skinVise = null;
+    fermerVitrine();
+    ui.refreshScreen(agentView);
+    return true;
+  }
+  if (agentView.origine === 'noyau') enterHub(ongletNoyau);
+  else enterTitle();
   return true;
 }
 
@@ -738,16 +864,20 @@ function agentDeDepart() {
   }
 }
 
-/** T2d (§ E4.B.1) : « Noyau » (bouton ou H) sur l'écran titre → hub ; la scène 3D du titre reste derrière. */
+/**
+ * T2d (§ E4.B.1) : « Noyau » (bouton ou H) sur l'écran titre → hub ; l'écran titre (fond peint et vitrine de l'agent) reste derrière. Aussi au retour
+ * de l'écran Agents ouvert depuis le Noyau (onglet d'avant). Onglet Agents ou absent : la Collection.
+ */
 function enterHub(tab) {
-  if (game.state !== STATE.TITLE) return false;
+  if (game.state !== STATE.TITLE && game.state !== STATE.AGENT) return false;
   setState(STATE.HUB);
   agentDeDepart();
   hubView.best = game.best ? game.best.wave : 0;
   hubView.agent = agents.getAgent();
-  hubView.tab = Number.isInteger(tab) ? tab : 0;
+  hubView.tab = Number.isInteger(tab) && tab !== ONGLET_AGENTS && tab >= 0 && tab < HUB.onglets.length ? tab : ONGLET_COLLECTION;
   hubMove.fill(0);
   ui.setScreen(SCREEN.HUB, hubView);
+  afficherMenu(); // le Noyau est posé sur l'écran titre (retour de l'écran Agents : il était caché ; agent relu)
   return true;
 }
 
@@ -763,24 +893,9 @@ function hubGuard() {
   return game.state === STATE.HUB && game.stateTime >= HUB.guardSeconds;
 }
 
-/** Onglet Agents : l'agent a devient l'agent de départ (gardé), sans lancer la partie ; verrouillé → refus. */
-function hubAgent(a) {
-  if (!hubGuard()) return false;
-  if (!agents.setAgent(a)) {
-    audio.play(SFX.BUY_DENIED);
-    return false;
-  }
-  saveAgent();
-  demanderModeleAgent(); // § E5.K : lu dès qu'il est choisi (l'ancien libéré à son arrivée)
-  audio.play(SFX.UI_CLICK);
-  hubView.agent = a;
-  ui.refreshScreen(hubView);
-  return true;
-}
-
 /**
- * « Jouer » depuis le hub : la partie démarre avec l'agent de départ (comme chooseAgent). § E4.L.1 : a = l'agent de la
- * fiche (« Jouer · <agent> ») — verrouillé : refus (BUY_DENIED), rien ne démarre ; débloqué : il devient l'agent de départ.
+ * « Jouer · <agent> » au pied du hub : la partie démarre avec l'agent de départ (a : un autre agent, débloqué, qui le
+ * devient) — verrouillé ou modèles pas encore chargés : refus (BUY_DENIED), rien ne démarre.
  */
 function hubPlay(a) {
   if (!hubGuard()) return false;
@@ -815,16 +930,10 @@ function hubReset() {
   return true;
 }
 
-/** T2c : Échap sur l'écran de l'agent → écran titre (T1). */
-function quitAgent() {
-  if (game.state !== STATE.AGENT) return false;
-  enterTitle();
-  return true;
-}
-
 /** T13 — vue : 'menu' (Échap, par défaut) ou 'fiche' (Tab) : ce que la pause montre en s'ouvrant (menus « Pile »). */
 function pause(vue) {
   const s = game.state;
+  if (!P.alive) return false; // § E5.AK : héros détruit (ralenti du coup mortel) — la partie est finie, pas de pause
   if (s !== STATE.PLAYING && s !== STATE.WAVE_CLEAR && s !== STATE.COUNTDOWN && s !== STATE.SHOP) return false;
   game.returnState = s;
   savedStateTime = game.stateTime;
@@ -838,6 +947,7 @@ function pause(vue) {
   pauseView.graphismes = game.settings.graphismes;
   pauseView.deplacement = game.settings.deplacement;
   pauseView.flashs = game.settings.flashs; // § E5.X5
+  pauseView.sensibilite = game.settings.sensibilite; // § E5.AG
   pauseView.layout = input.getLayout();
   pauseView.vue = vue === 'fiche' ? 'fiche' : 'menu';
   ui.setScreen(SCREEN.PAUSE, pauseView);
@@ -1278,6 +1388,17 @@ function setFlashs(cle) {
 }
 actions.setFlashs = setFlashs;
 
+/** § E5.AG : « Sensibilité de la souris » — multiplicateur des deux vitesses de base (caméra libre, curseur du jeu). */
+function setSensibilite(v) {
+  if (!Number.isFinite(v)) return false;
+  const R = REGLAGES.sensibilite;
+  game.settings.sensibilite = v < R.min ? R.min : v > R.max ? R.max : v;
+  SENSIBILITE_SOURIS.mul = game.settings.sensibilite; // lu au prochain écart de la souris : appliqué tout de suite
+  saveSettings();
+  return true;
+}
+actions.setSensibilite = setSensibilite;
+
 /** « Déplacement » : 'clavier' ou 'souris' (§ E5.AB : caméra derrière l'agent, la souris la tourne, ZQSD pour avancer). */
 function setDeplacement(cle) {
   if (!REGLAGES.deplacement.some((g) => g.key === cle)) return false;
@@ -1427,6 +1548,7 @@ function causeVue() {
   return {
     mort,
     detruit: mort > 0 ? CAUSE_TEXTE[mort] : '',
+    conseil: mort > 0 ? conseilMort(mort) : '', // § E5.AK : ce qui s'est passé, comment l'éviter
     groupe: g >= 0 ? RETOURS_GUIDE.groupes[g] : '',
     indexGroupe: g,
     pct,
@@ -1435,6 +1557,14 @@ function causeVue() {
   };
 }
 //#endregion e5:Q-retours-guide
+
+//#region e5:AK-mort-claire
+/** § E5.AK : phrase de la cause (hors combat : alloue), touche RÉELLE du dash à la place de {dash}. */
+function conseilMort(c) {
+  const t = MORT_CLAIRE.conseils[c] || '';
+  return t.replace(/\{dash\}/g, input.libelle('dash'));
+}
+//#endregion e5:AK-mort-claire
 
 /** T4 : mort du joueur. */
 function enterGameOver() {
@@ -1530,13 +1660,20 @@ function handleKeys() {
       else if (input.pressed(ACTION.SKIP)) skipChoice();
       else if (input.pressed(ACTION.BANISH)) armBanish();
       break;
-    case STATE.AGENT: // § E2.D : 1 / 2 / 3 choisit, Entrée garde l'agent courant, Échap revient au titre
-      if (input.pressed(ACTION.CHOICE_1)) chooseAgent(0);
-      else if (input.pressed(ACTION.CHOICE_2)) chooseAgent(1);
-      else if (input.pressed(ACTION.CHOICE_3)) chooseAgent(2);
-      else if (input.pressed(ACTION.CONFIRM)) chooseAgent(agents.getAgent());
-      else if (input.pressed(ACTION.PAUSE) && quitAgent()) audio.play(SFX.UI_CLICK); // § E5.AD
+    case STATE.AGENT: { // Écran Agents : flèches (focus), Entrée (élément visé), Échap = Retour ; aucune touche dédiée
+      const mx = input.getMoveX();
+      const my = input.getMoveY();
+      const fx = mx !== 0 && mx !== agentMove[0] ? mx : 0;
+      const fy = my !== 0 && my !== agentMove[1] ? -my : 0; // getMoveY : +1 = haut ; l'écran : +1 = vers le bas
+      agentMove[0] = mx;
+      agentMove[1] = my;
+      if (!agentGarde()) break;
+      if (input.pressed(ACTION.PAUSE)) agentRetour();
+      else if (input.pressed(ACTION.CONFIRM)) ui.agentsConfirmer();
+      else if (fx !== 0) ui.agentsBouger(fx, 0);
+      else if (fy !== 0) ui.agentsBouger(0, fy);
       break;
+    }
     case STATE.CHEST: // § E2.C : 1 / 2 / 3 prennent un lot, Entrée passe l'animation, R relance, X passe, B bannit ; Échap ignoré
       if (input.pressed(ACTION.CHOICE_1)) chestKey(0);
       else if (input.pressed(ACTION.CHOICE_2)) chestKey(1);
@@ -1577,7 +1714,7 @@ function postSim(realDt) {
   switch (game.state) {
     case STATE.COUNTDOWN: {
       if (!P.alive) {
-        enterGameOver(); // T4
+        if (mortClaire.PHASE[0] !== mortClaire.RALENTI) enterGameOver(); // T4 ; § E5.AK : après le ralenti (solo)
         break;
       }
       const C = WAVES.countdown;
@@ -1614,7 +1751,7 @@ function postSim(realDt) {
     }
     case STATE.PLAYING:
       if (!P.alive) {
-        enterGameOver(); // T4 (priorité 1)
+        if (mortClaire.PHASE[0] !== mortClaire.RALENTI) enterGameOver(); // T4 (priorité 1) ; § E5.AK : après le ralenti (solo)
       } else if (waves.isCleared() && !isPauseWave(run.wave) && !game.pauseForcee) {
         basculer(); // § E5.V (priorité 2) : la vague suivante démarre dans cette image, rien n'est figé ni retiré
       } else if (waves.isCleared()) {
@@ -1670,7 +1807,7 @@ function postSim(realDt) {
         if (carryMerged > 0) ui.queueBanner(CARRY.mergeKicker + carryMerged + CARRY.mergeBanner, CARRY.bannerSeconds, SFX.CARRYOVER); // § E3.K ; § E5.AD : avec son son
       }
       if (!P.alive) {
-        enterGameOver(); // T4
+        if (mortClaire.PHASE[0] !== mortClaire.RALENTI) enterGameOver(); // T4 ; § E5.AK : après le ralenti (solo)
       } else if (game.phase === CLEAR_PHASE.VACUUM) {
         // § E4.F.3 : la phase d'aspiration ne finit pas tant qu'un robot est en repli (les écrans suivants figent la scène)
         const done = !carryMergePending && game.stateTime >= SHOP.vacuumMinSeconds && ((pickups.getVacuumCount() === 0 && chests.getGroundCount() === 0 && disquette.getGroundCount() === 0) || game.stateTime >= SHOP.vacuumMaxSeconds);
@@ -1804,7 +1941,7 @@ function runFrame(frameMs, realDt) {
   // F6
   const s = game.state;
   const simulated = s === STATE.PLAYING || s === STATE.WAVE_CLEAR || s === STATE.COUNTDOWN;
-  const simDt = simulated ? realDt * fx.getTimeScale() : 0;
+  const simDt = simulated ? realDt * fx.getTimeScale() * mortClaire.ECHELLE[0] : 0; // § E5.AK : ralenti du coup mortel (1 sinon)
   // F7 : quand simDt = 0 la simulation n'est pas appelée du tout ; aucun update ne reçoit dt = 0
   if (simDt > 0) {
     debug.begin(1);
@@ -1817,6 +1954,10 @@ function runFrame(frameMs, realDt) {
   // § E1.S : le chrono de la vague compte le temps RÉEL — il reçoit ici ce que la simulation n'a pas eu (arrêt sur
   // image, ralenti) ; les deux durées sont passées telles quelles (aucun flottant créé pour l'appel, § V).
   if (s === STATE.PLAYING && realDt > simDt) waves.advanceClock(realDt, simDt);
+  //#region e5:AK-mort-claire
+  mortClaire.DT[0] = realDt; // § E5.AK : dt lu dans un tableau typé (§ V)
+  mortClaire.update(); // coup mortel vu, ralenti, robot suivi, camera.REGARD — chaque image, avant les transitions
+  //#endregion e5:AK-mort-claire
   postSim(realDt); // F8
   zoomMolette(); // § E2.E : la molette règle le zoom demandé (en partie seulement), avant que la caméra le rejoigne
   //#region e5:AB-camera-3p
@@ -1840,10 +1981,12 @@ function runFrame(frameMs, realDt) {
   disquette.sync(); // § E4.Q : disquette au sol (chute, balancement, pouls)
   elites.sync(); // § E3.A : icônes des modificateurs, bulles des générateurs de bouclier
   barres.DT[0] = realDt; // § E4.H : dt lu dans un tableau typé (aucun flottant passé en argument, § V)
+  barres.DT[1] = simDt; // § E5.AI : attente du fondu de la barre du héros en temps de jeu
   barres.sync(); // § E4.H : petites barres de vie (élites, blindés, fusionnés)
   props.sync(); // § E3.C
   inviteInteragir.DT[0] = realDt; // § E5.C : dt lu dans un tableau typé (§ V)
   inviteInteragir.sync(); // § E5.C : après props.sync (borne prête de l'image)
+  mortClaire.sync(); // § E5.AK : flèche au-dessus de la source du coup mortel (cachée hors de la mort)
   utilities.sync(); // § E3.C
   items.sync(); // § E2.F : drones compagnons
   domeParefeu.sync(); // § E5.B : dôme du Pare-feu sur le héros (état lu dans items, source du coup dans damage)
@@ -1866,11 +2009,17 @@ function runFrame(frameMs, realDt) {
   }
   audio.update(realDt); // F13
   debug.begin(3);
-  // F14 — écran titre : la scène du menu À LA PLACE du monde (§ Z octies) ; fond uni tant qu'elle n'est pas arrivée
-  if (game.state === STATE.TITLE || game.state === STATE.AGENT || game.state === STATE.HUB) { // § E2.D, § E4.B : la scène du titre reste derrière l'écran de l'agent et le hub
-    if (game.state === STATE.HUB) pauseAgent.render(realDt); // § E4.L.1 : portrait de la fiche au Noyau, AVANT la scène du titre
+  // F14 — écran titre À LA PLACE du monde (§ Z octies ; tâche 7 : l'accueil peint, la vitrine de l'agent choisi) ; fond
+  // uni tant qu'il n'est pas arrivé
+  if (game.state === STATE.AGENT) {
+    // Écran Agents : plein écran sur fond peint OPAQUE — la scène derrière (titre, Noyau) n'est pas rendue ; seule la
+    // vitrine 3D de la fiche l'est (rien si fermée)
+    pauseAgent.renderVitrine(realDt);
+    render.noteFrame();
+  } else if (game.state === STATE.TITLE || game.state === STATE.HUB) { // § E4.B : l'écran titre (fond peint, vitrine) reste derrière le hub
+    pauseAgent.renderVitrine(realDt); // tâche 7 : l'agent choisi de l'écran titre (cadre titre) ; rien si fermée
     if (menu !== null) {
-      menu.image(realDt);
+      menu.image(realDt); // accueil : poussière (le fond est un calque CSS) ; outil : la scène 3D
       render.noteFrame();
     } else render.clearScreen();
   } else {
@@ -1885,7 +2034,6 @@ function runFrame(frameMs, realDt) {
   // moment des gros coups. Seul le dash est reporté : les autres fronts (pause, debug) ont été traités en F3 et
   // F4, et le seraient deux fois.
   if (simulated && simDt === 0 && game.state === s && input.pressed(ACTION.DASH)) input.requeue(ACTION.DASH);
-  if (simulated && simDt === 0 && game.state === s && input.pressed(ACTION.STRIKE)) input.requeue(ACTION.STRIKE); // 16/11, point 3
   if (simulated && simDt === 0 && game.state === s && input.pressed(ACTION_INTERACT)) input.requeue(ACTION_INTERACT); // § E5.C : appui sur Interagir pendant un arrêt sur image
   input.endFrame(); // F16
 }
@@ -1915,6 +2063,13 @@ function demanderModeleAgent() {
     poserAgentCourant();
     return true;
   }
+  lireModele(a);
+  return false;
+}
+
+/** § E5.K : lecture du modèle de l'agent a lancée s'il n'est ni chargé ni déjà en lecture (arrivée : agentsTraiter). */
+function lireModele(a) {
+  if (game.modeles !== 'pret' || player.aModeleAgent(a)) return;
   if (agentsEnLecture[a] === 0) {
     agentsEnLecture[a] = 1;
     const t0 = performance.now();
@@ -1927,19 +2082,22 @@ function demanderModeleAgent() {
       },
     );
   }
-  return false;
 }
 
-/** § E5.K : pose le modèle de run.agent et libère les autres (données de jeu, puis leur glTF dans le cache de glb.js). */
+/**
+ * § E5.K : pose le modèle de run.agent et libère les autres (données de jeu, puis leur glTF dans le cache de glb.js),
+ * sauf celui de la fiche ouverte de l'écran Agents (libéré à sa fermeture, libererVitrine).
+ */
 function poserAgentCourant() {
-  const libres = player.poserAgentCourant();
+  const libres = player.poserAgentCourant(agentVitrine);
   for (let i = 0; i < libres.length; i++) oublierAgent(libres[i]);
   agentsInfo.liberes += libres.length;
 }
 
 /**
  * § E5.K : début d'une image, après l'arrivée du modèle d'un agent. Celui de run.agent : rangé, posé (les autres libérés),
- * préchauffé ; la partie demandée démarre. Un modèle arrivé pour un agent qui n'est plus choisi est oublié tout de suite.
+ * préchauffé ; la partie demandée démarre. Celui de l'agent de la fiche ouverte (écran Agents) : rangé sans être posé, la
+ * vitrine le montre à l'image suivante. Un modèle arrivé pour un agent qui n'est ni choisi ni montré est oublié.
  */
 function agentsTraiter() {
   let pose = false;
@@ -1950,7 +2108,12 @@ function agentsTraiter() {
     if (r.d === null) {
       console.error('Modèle de l’agent illisible :', r.erreur);
       if (r.a === run.agent && lancementDemande !== null) memoire.echecAgent(r.erreur);
-      if (game.state === STATE.HUB) ui.refreshScreen(hubView); // § E5.W : plus de « Chargement » sans fin (repli : l'image)
+      continue;
+    }
+    if (r.a !== run.agent && r.a === agentVitrine && game.state === STATE.AGENT) {
+      player.ajouterModeleAgent(r.a, r.d); // fiche : gardé (non posé) tant qu'elle est ouverte
+      agentsInfo.lus++;
+      agentsInfo.ms = r.ms;
       continue;
     }
     if (r.a !== run.agent) {
@@ -1969,7 +2132,6 @@ function agentsTraiter() {
   poserAgentCourant();
   render.prewarm(); // géométrie du nouvel agent envoyée hors combat
   pauseAgent.prechauffer(); // portrait de la pause sur le modèle chargé
-  if (game.state === STATE.HUB) ui.refreshScreen(hubView); // la fiche passe de l'image fixe au portrait 3D
   if (lancementDemande !== null && lancementDemande === game.state) launch();
   else if (lancementDemande !== null) {
     lancementDemande = null;
@@ -1987,6 +2149,7 @@ function modelesTraiter() {
   if (modelesArrives !== null) {
     poserModeles();
     demanderModeleAgent(); // § E5.K : agent de la partie ≠ celui lu au démarrage (verrouillé) → lu maintenant
+    if (agentVitrine >= 0) lireModele(agentVitrine); // fiche de l'écran Agents ouverte pendant le chargement
     prechaufferSansBloquer(); // 20/11 : les programmes des modèles compilés sans figer la page (puis prewarm + portrait)
   }
   tenterPublier();
@@ -2024,13 +2187,14 @@ function menuTraiter() {
     menu = menuArrive;
     menuArrive = null;
     ctx.menu = menu;
+    ctx.accueil = SCENE_OUTIL ? null : menu; // debug.accueil()
     game.menu = 'pret';
-    if (game.state === STATE.TITLE || game.state === STATE.AGENT || game.state === STATE.HUB) afficherMenu(); // § E2.D, § E4.B : l'écran de l'agent et le hub gardent la scène du titre
+    if (game.state === STATE.TITLE || game.state === STATE.HUB) afficherMenu(); // § E4.B : le hub garde l'écran titre ; l'écran Agents le cache
   }
   tenterPublier();
 }
 
-/** Scène du menu (promesse), pour les pages de prototype (tests/menu) : elles ne créent plus la leur. */
+/** Écran titre (promesse : l'accueil, ou la scène 3D en mode outil), pour les pages de prototype (tests/menu). */
 export function menuIntegre() {
   return menuPromesse;
 }
@@ -2058,9 +2222,12 @@ async function boot() {
   camera.init(ctx);
   render.init(ctx);
   memoire.brancher(ctx.canvas, () => pause('menu')); // § E5.K : contexte WebGL perdu → message + Recharger ; § E5.X2 : partie en pause
-  // Écran titre 3D (§ Z octies) : chargé en arrière-plan avec le renderer du jeu, son par audio.js.
+  // Écran titre (tâche 7) : l'accueil peint ; outil de cuisson (SCENE_OUTIL) : la scène 3D de menu.js, importée à la
+  // demande (ses modules — héros, boss, décor — ne sont jamais chargés sinon). Renderer du jeu, son par audio.js.
   const tMenu = performance.now();
-  menuPromesse = creerMenu({ renderer: ctx.renderer, base: RACINE, audio });
+  menuPromesse = SCENE_OUTIL
+    ? import('./menu/menu.js').then((m) => m.creerMenu({ renderer: ctx.renderer, base: RACINE, audio }))
+    : creerAccueil({ renderer: ctx.renderer, base: RACINE, audio });
   menuPromesse.then(
     (m) => {
       menuArrive = m;
@@ -2111,6 +2278,7 @@ async function boot() {
   cooldowns.init(ctx); // § E3.H : après weapons et items (niveaux, piles)
   props.init(ctx); // § E3.C : après utilities (lâche des utilitaires)
   inviteInteragir.init(ctx); // § E5.C : avant le préchauffage (programme du sprite compilé hors combat)
+  mortClaire.init(ctx); // § E5.AK : flèche du coup mortel, avant le préchauffage (programme du sprite compilé hors combat)
   evolutions.init(ctx); // § E3.B : après weapons et items (recettes résolues par clé)
   defis.init(ctx); // § E4.A : conditions et textes des succès (lit chests, weapons, items, damage, ui par ctx)
   if (game.debug) window.__e3c = { props, utilities, ctx }; // § E3.C : crochets des tests du chantier (debug seulement)
@@ -2148,6 +2316,13 @@ async function boot() {
         herosIdles.setIdleAgent(a, c);
         pauseAgent.setIdleAgent(a, c);
       },
+      () => {},
+    );
+  });
+  // Écran Agents : idles de vitrine (rangés seulement dans pauseAgent, joués en mode vitrine ; la pause garde les siens)
+  VITRINE.idles.forEach((f, a) => {
+    chargerCuit(f).then(
+      (c) => pauseAgent.setIdleVitrine(a, c),
       () => {},
     );
   });
@@ -2226,6 +2401,7 @@ async function boot() {
   camera.setOrbite(game.settings.deplacement === 'souris'); // § E5.AB : caméra derrière l'agent
   camera.lierRotation(input.ROTATION); // § E5.AB.2
   CONFORT_FLASHS.reduits = game.settings.flashs === 'reduits'; // § E5.X5 : réglage sauvé
+  SENSIBILITE_SOURIS.mul = game.settings.sensibilite; // § E5.AG : réglage sauvé
   enterTitle(); // T1
   tenterPublier(); // sinon à l'arrivée des modèles et du menu (modelesTraiter, menuTraiter)
 

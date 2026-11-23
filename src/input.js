@@ -1,8 +1,8 @@
 // FONDATION : input.js — clavier par KeyboardEvent.code (position physique : ZQSD et WASD sans réglage),
 // fronts montants figés par image, détection AZERTY / QWERTY pour les libellés (contrat : ARCHITECTURE.md § B.1).
 import { ACTION, ACTION_TOTAL, INPUT, INTERAGIR, STATE, TOUCHES, ZOOM } from './config.js';
-import { WEAPON, WEAPONS } from './config.js'; // § E5.C : fiche de la Frappe éclair (touche réelle)
 import { CAMERA_3P } from './config.js'; // § E5.AB : écarts de la souris sous verrou (caméra, curseur du jeu)
+import { SENSIBILITE_SOURIS } from './config.js'; // § E5.AG : réglage « Sensibilité de la souris » (multiplicateur)
 // § E5.C : ACTION_TOTAL = ACTION_COUNT + l'action « Interagir » (ACTION_INTERACT, région e5:C-interagir)
 const ACTION_COUNT = ACTION_TOTAL;
 
@@ -48,21 +48,7 @@ function anyDown(list) {
 
 function detectLayout(code, key) {
   if (!key) return;
-  const avant = layout;
-  detecter(code, key.toLowerCase());
-  if (layout !== avant) majTexteFrappe(); // libellé de la touche de frappe changé (A ↔ Q)
-}
-
-/**
- * § E5.C (19/11, choix de Femz) : la fiche de la Frappe éclair cite la VRAIE touche de frappe — modèle
- * WEAPONS[FLASH].descModele, {touche} = libellé de la ligne « frappe » (disposition détectée, touche réglée). Appelée
- * quand les touches sont reconstruites (rebuild) et quand la disposition change ; jamais par image.
- */
-function majTexteFrappe() {
-  const W = WEAPONS[WEAPON.FLASH];
-  if (!W || !W.descModele || !LIGNE.frappe) return;
-  W.desc = W.descModele.replace('{touche}', libelle('frappe'));
-  if (W.detailModele) W.detail = W.detailModele.replace('{touche}', libelle('frappe')); // § E5.L (C16) : la fiche aussi
+  detecter(code, key.toLowerCase()); // § E5.AM : plus de texte de la Frappe éclair à la touche réglée à refaire
 }
 
 function detecter(code, k) {
@@ -216,7 +202,7 @@ function ecartSouris(e) {
     return;
   }
   // § E5.AB.14 : mode « Vue fixe » — le curseur du jeu, borné à la fenêtre (clic pour avancer, dash)
-  const k = CAMERA_3P.curseur.sensibilite;
+  const k = CAMERA_3P.curseur.sensibilite * SENSIBILITE_SOURIS.mul; // § E5.AG : × le réglage (1 au milieu : exact)
   let x = SOURIS[S_X] + mx * k;
   let y = SOURIS[S_Y] + my * k;
   const w = window.innerWidth;
@@ -603,7 +589,6 @@ function rebuild() {
   for (const c of INPUT.preventDefault) prevent[c] = true;
   for (const L of TOUCHES.lignes) for (const c of binds[L.id]) if (c !== '') prevent[c] = true;
   if (ctx !== null && ctx.game.debug) for (const c of INPUT.preventDefaultDebug) prevent[c] = true;
-  majTexteFrappe(); // § E5.C : la fiche de la Frappe éclair cite la touche réglée
 }
 
 /** Touches réglées : copie { id: [principale, secondaire] }. */

@@ -356,8 +356,9 @@ export const SFX = Object.freeze({
   // objet Éclats (Femz, 21/11) — branchés à la fusion de la branche eclats (src/items.js, shrapnel)
   ECLAT_PROJECTION: 125, // départ des éclats
   ECLAT_IMPACT: 126, // chaque impact (4 variantes de hauteur au hasard, toutes dans la gamme de la musique)
+  VIRUS_INFECTION: 127, // § E5.AH (Femz, 22/11) : un robot vient d'être infecté par le Virus (réglages : région e5:AH-virus-gaz)
 });
-export const SFX_COUNT = 127;
+export const SFX_COUNT = 128;
 
 /** Drapeaux par robot (E.flags, masque de bits ; remis à 0 par enemies.spawn) — étape 1 du plan addictif (§ E1.0). */
 export const EFLAG = Object.freeze({
@@ -3121,16 +3122,22 @@ export const ANIM = {
     // derrière, demi-tour) ramenait le tissu lancé DEVANT le torse (relevé jusqu'à 1 m devant, contrôle « partie »).
     // 0 = le plan passe juste derrière le dos ; null = plan coupé.
     planDos: 0,
-    // Profil du dos (src/anim/profil-corps.js, retour de Femz du 22/11 : « y'a toujours de l'écart entre les capes et
-    // les modèles 3D ») : quand le .glb a sa pièce « corps », le contour relevé du torse REMPLACE le cylindre du dos et
-    // le plan ci-dessus (ils tenaient la cape à 10 cm de la taille, 5 cm des épaules) ; repos et accroches posés à
-    // ecartDos derrière le dos, tissu jamais plus près que margeDos ; adhérence : poussée vers l'avant du buste (m/s²),
-    // la cape se pose sur le dos à l'arrêt ; en course la traînée de l'air l'emporte et elle flotte
-    ecartDos: 0.012,
-    accrocheDy: -0.035, // m — accroches abaissées sur le haut du dos (avec le profil)
-    margeDos: 0.01,
-    adherence: 3,
-    adherenceVmax: 1.5, // m/s — l'adhérence s'efface avec la vitesse du buste : nulle au-delà (en course la cape flotte)
+    // Dos RÉEL (skins des agents, tâche 2, 22/11 — Femz : « les capes flottent trop loin du corps ») : quand le modèle a
+    // une pièce `corps`, le plan du dos et la capsule cape_dos (plaqués à −0,166 m, 2 à 11 cm derrière le vrai dos
+    // creusé) sont remplacés par la surface arrière du maillage (src/anim/dos-reel.js) : aucune particule libre ne passe
+    // devant elle. Partagé avec les tissus du Shinobi (TISSUS.dosReel). marge : écart gardé à la surface (m).
+    // adherence : à l'arrêt, le tissu est pressé contre le dos (m/s², le long de l'avant du buste — il épouse le creux de
+    // la taille au lieu de pendre à la verticale depuis les omoplates) ; nulle dès que le héros va plus vite que
+    // vitesse (m/s) : course, dash et vrille ne changent pas ; revient en tau s quand il s'arrête. fenetre : part du
+    // demi-écart entre deux rangées où la surface la plus en arrière fait foi (le segment vers la rangée voisine ne coupe
+    // pas les omoplates ; mesuré : aucun point de tissu dans le torse au repos avec 0,5 — 1,9 cm avec 0).
+    // serrage (porte 1, Femz : « cape qui se resserre à la taille ») : sur le torse, chaque rangée de la cape ne dépasse pas
+    // la demi-largeur du torse (au moins les hanches) + serrage (m) ; sous le torse, l'évasement largeurHaut → largeurBas.
+    // En course, la limite de la cape glisse du dos réel vers le plan planDos à mesure que l'adhérence s'efface (fusion
+    // de 0.5.13, élément repris de l'ancien profil-corps de main : les bras ne traversent plus la cape en course). La
+    // surface de la cape compte la tête (au-dessus des épaules, l'arrière du casque) : juste après un arrêt, la cape
+    // qui retombe encore tenue au plan ne passe plus sous le casque.
+    dosReel: { marge: 0.008, adherence: 6, vitesse: 2, tau: 0.3, fenetre: 0.5, serrage: 0.01 },
     teleport: 3, // m — au-delà d'un saut d'accroche en une image (téléportation, Rejouer), la cape est replacée
   },
   // ----- Repères au sol R1 (recharge du dash) et R2 (santé basse), retour de Femz du 13/11
@@ -4082,6 +4089,30 @@ AUDIO.sounds[SFX.CHEST_PICK] = { dur: 0.9, gain: 0.32, minInterval: 0.1, maxVoic
 // (calculé, pas joué) : réglé par le chantier G.
 export const AGENT = Object.freeze({ ECLAIREUR: 0, BASTION: 1, SHINOBI: 2 });
 export const AGENT_COUNT = 3;
+//#region skins
+// Skins des agents (tâche 3) : `base` = le modèle de l'agent, toujours disponible ; les autres se gagnent par un défi
+// (clé de récompense `skin:<agent>:<skin>` dans meta.unlocked). fichier : modèle 3D du skin (null tant qu'il n'existe pas).
+export const SKIN_BASE = 'base';
+export const SKIN_NOM_BASE = 'Standard';
+export const SKINS = { eclaireur: [], bastion: [], shinobi: [{ key: 'ombre', name: "Agent de l'ombre", fichier: null }] };
+/** Clés des skins d'un agent, `base` d'abord (`['base']` pour un agent sans skin ou inconnu). */
+export function skinsDe(agentKey) {
+  const l = Object.prototype.hasOwnProperty.call(SKINS, agentKey) ? SKINS[agentKey] : [];
+  return [SKIN_BASE, ...l.map((s) => s.key)];
+}
+/** Nom affiché d'un skin (la clé elle-même si inconnu). */
+export function skinNom(agentKey, skinKey) {
+  if (skinKey === SKIN_BASE) return SKIN_NOM_BASE;
+  const l = Object.prototype.hasOwnProperty.call(SKINS, agentKey) ? SKINS[agentKey] : [];
+  const s = l.find((x) => x.key === skinKey);
+  return s ? s.name : skinKey;
+}
+/** Textes des skins : progression d'un skin verrouillé (condition d'un succès sans compteur). */
+export const SKIN_UI = {
+  pasEncore: 'pas encore débloqué',
+};
+//#endregion skins
+
 export const AGENTS = [
   // signatureKey : clé de WEAPON_KEYS (l'arme de départ, jamais donnée aux autres agents par les coffres) ;
   // signatureName : nom affiché tant que l'arme n'est pas dans le jeu. stats : profil posé dans mods au début de la partie.
@@ -4114,6 +4145,7 @@ export const CHOICES = {
 };
 export const AGENT_SCREEN = {
   guardSeconds: 0.35, // clics et touches ignorés à l'ouverture de l'écran
+  survolMs: 120, // grille : une carte n'est visée au survol que si le pointeur s'y arrête (immobile) au moins ce temps
   // Parallaxe : décalage maximal de chaque couche (fond de grille, cartes, portraits), en px CSS dans la fenêtre de
   // référence (UI.scale) ; rate : lissage (1/s) ; deadPx : une couche n'est réécrite que si sa cible bouge d'autant.
   parallax: { layersPx: [6, 12, 20], rate: 8, deadPx: 0.5 },
@@ -4125,9 +4157,32 @@ export const AGENT_SCREEN = {
     { stat: 'damageTakenMul', label: 'Blindage', base: 1, perPip: -0.075 },
     { stat: 'dashCdMul', label: 'Dash', base: 1, perPip: -0.1 },
   ],
-  title: "Choix de l'agent",
+  // Écran Agents (tâche 5, maquette docs/maquettes-ecran-agents/grille-B2.png) : grille des agents puis fiche perso
+  title: 'Agents',
   lead: 'Chaque agent part avec son arme et change une règle.',
-  rootTag: 'ROOT', // étiquette de l'arme signature (rareté rouge, § 2.1 de l'étude)
+  textes: { verrou: 'Verrouillé', skins: 'skins', jouer: 'Jouer', retour: 'Retour' },
+  // Fiche perso (tâche 6, maquettes fiche-B5.png et fiche-B2-verrouille.png) : colonne des skins (vignettes VITRINE.vignettes),
+  // le skin visé (choisi : son nom et une ligne ; verrouillé : la condition de son succès), arme de départ (étiquette de
+  // rareté « Root » expliquée au survol), rôle, nom, passif, barres ; « Jouer » rappelle le skin porté quand un skin
+  // verrouillé est visé ; un agent verrouillé : sa condition et sa progression à la place de « Jouer ».
+  fiche: {
+    skins: 'Skins',
+    choisi: 'Choisi',
+    skinChoisi: 'Skin choisi',
+    armeDepart: 'Arme de départ',
+    passif: 'Passif · ',
+    enSkin: 'en skin ',
+    chargement: 'Chargement', // vitrine pendant la lecture du modèle de l'agent (§ E5.K)
+    // nom en grand : nomRem (maquette), ramené pour tenir dans colonneRem (largeur de la colonne droite, 22,875 rem, moins
+    // une marge) ; nomChasse : chasse de Determination mesurée sur la maquette (« Shinobi » : 640 px pour 7 lettres à 156,8 px)
+    nomRem: 4.9,
+    colonneRem: 22.4,
+    nomChasse: 0.583,
+    // ligne du skin Standard : « La tenue d'origine du Shinobi. », « … de l'Éclaireur. » (élision devant une voyelle)
+    tenueBase: (nom) => "La tenue d'origine " + (/^[AEIOUYÉÈÊÂÎÔH]/i.test(nom) ? "de l'" : 'du ') + nom + '.',
+  },
+  rootTag: 'ROOT', // étiquette de l'arme de départ (rareté rouge « Root », § 2.1 de l'étude)
+  rootBulle: 'Root : la rareté la plus haute (6/6). L’arme de départ de cet agent.',
   // vignettes 48 × 68 (Noyau, fiche, silhouettes du Noyau) et planches animées des cartes (PORTRAIT), même rendu :
   // outils/portraits_agents.mjs
   portraits: ['assets/ui/agents/agent-0.png', 'assets/ui/agents/agent-1.png', 'assets/ui/agents/agent-2.png'],
@@ -5144,6 +5199,7 @@ export const EVOLUTIONS = [
     heal: 4 },
   { id: 6, key: 'foudre-ombre', name: "Foudre de l'ombre", weapon: 'flash', item: 'tesla', partner: null, rule: "La frappe lance un éclair sur chaque robot qu'elle tranche.",
     delay: 0.08, share: 0.7, height: 7 },
+  // § E5.AL : catalyseur du Shuriken givré = Éclats ('shrapnel'), posé par la région e5:AL-retrait-cryogel (fin du fichier)
   { id: 7, key: 'shuriken-givre', name: 'Shuriken givré', weapon: 'boomerang', item: 'cryo', partner: null, rule: "Il gèle les robots qu'il traverse et éclate en 4 morceaux à son retour.",
     slow: 0.2, seconds: 1.5, shards: 4, share: 0.5, pierce: 2, speed: 20, range: 8, radius: 0.35 },
   { id: 8, key: 'seisme', name: 'Séisme', weapon: 'hammer', item: 'reactive', partner: null, rule: "Une 2e onde, plus large (× 1,6), part 0,4 s après la première.",
@@ -5501,7 +5557,7 @@ AUDIO.sounds[SFX.FIELD] = { dur: 0.35, gain: 0.12, minInterval: 0.3, maxVoices: 
 //#region e4:A-meta-defis
 // =====================================================================================================
 // ÉTAPE 4 DU PLAN ADDICTIF, CHANTIER A (ARCHITECTURE.md § E4.A) : méta-progression par DÉBLOCAGES seulement (aucune
-// stat permanente), 20 succès, monnaie méta (« Cycles », nom proposé), verrous du tirage. Lu par src/meta.js et
+// stat permanente), 21 succès, monnaie méta (« Cycles », nom proposé), verrous du tirage. Lu par src/meta.js et
 // src/defis.js. Clés en chaînes : 'arme:<WEAPON_KEYS>', 'objet:<ITEM_KEYS>', 'util:<clé UTILITIES>', 'agent:<clé>',
 // recettes 'evo:<clé EVOLUTIONS>' et 'fusion:<clé FUSIONS>'.
 // =====================================================================================================
@@ -5536,7 +5592,7 @@ export const DEFI_COND = Object.freeze({
 /** Sorte de récompense : débloque (dans le tirage), met en vente (onglet Déblocages), révèle (recette au carnet). */
 export const DEFI_RECOMP = Object.freeze({ DEBLOQUE: 0, VENTE: 1, REVELE: 2 });
 /**
- * Les 20 succès (§ E4.A.2). cond : DEFI_COND ; n : seuil ; arg : type de robot (ENEMY.*), source (WEAPON.*) ou -1 ;
+ * Les 21 succès (§ E4.A.2 ; le 21e, « Agent de l'ombre », débloque un skin). cond : DEFI_COND ; n : seuil ; arg : type de robot (ENEMY.*), source (WEAPON.*) ou -1 ;
  * agent : agent imposé (-1 : tous) ; cumul : toutes parties confondues (sinon dans une seule partie) ; finVague : testé
  * seulement au début de WAVE_CLEAR ; reward : clé débloquée, mise en vente ou révélée ; texte : la condition en clair.
  * Seuils SUPPOSÉS, pas joués (§ E4.Y).
@@ -5570,9 +5626,11 @@ export const DEFIS = {
     { key: 'evolutions3', name: 'Bibliothécaire', cond: DEFI_COND.EVOLUTIONS, n: 3, arg: -1, agent: -1, cumul: true, reward: 'evo:nuage-frag', sorte: DEFI_RECOMP.REVELE, texte: 'Découvrir 3 évolutions différentes' },
     { key: 'blasterSeul8', name: 'Puriste', cond: DEFI_COND.ARME_SEULE, n: 8, arg: WEAPON.BLASTER, agent: AGENT.ECLAIREUR, cumul: false, reward: 'fusion:restauration', sorte: DEFI_RECOMP.REVELE, texte: 'Atteindre la vague 8 avec le Blaster pour seule arme (Éclaireur)' },
     { key: 'boss2', name: 'Mise à jour refusée', cond: DEFI_COND.BOSS_RANG, n: 2, arg: -1, agent: -1, cumul: false, reward: 'fusion:essaim', sorte: DEFI_RECOMP.REVELE, texte: 'Détruire le boss de rang 2 (vague 10)' },
+    // 21e succès (skins des agents) : en fin de liste, les index des 20 autres ne bougent pas ; la récompense est un skin
+    { key: 'ombre', name: "Agent de l'ombre", cond: DEFI_COND.BOSS_RANG, n: 2, arg: -1, agent: AGENT.SHINOBI, cumul: false, reward: 'skin:shinobi:ombre', sorte: DEFI_RECOMP.DEBLOQUE, texte: 'Détruire le boss de rang 2 avec le Shinobi' },
   ],
 };
-export const DEFI_COUNT = 20;
+export const DEFI_COUNT = 21;
 // Son du succès (§ E4.0.3) : découpe de « Nouveau record.wav » (banque de Femz), + 5 demi-tons, 0,9 s. CANDIDAT.
 AUDIO.sounds[SFX.SUCCES] = { dur: 0.9, gain: 0.4, minInterval: 0.5, maxVoices: 1, pitchVar: 0, priority: 2 };
 //#endregion e4:A-meta-defis
@@ -5636,8 +5694,6 @@ export const HUB = {
     resetConfirm: ['Confirmer : tout effacer ?', 'Vraiment ? Succès, Cycles et déblocages perdus'],
     solde: 'Solde',
     gagnes: 'gagnés depuis le début',
-    aideAgents: 'Clic : agent de départ \u00b7 Entrée sur l\u2019agent de départ : la partie démarre',
-    chargementAgent: 'Chargement', // § E5.W : portrait de la fiche pendant la lecture du modèle de l'agent choisi
   },
 };
 // Son du déblocage (§ E4.0.3) : découpe de « Achat.wav » (banque de Femz), − 4 demi-tons, 0,6 s. CANDIDAT.
@@ -6021,7 +6077,7 @@ export const SUCCES_UI = {
     vague3: 'robot:0', vague5: 'robot:6', kills2000: 'robot:0', boss1: 'robot:6', coffres10: 'sr-m-luck', lame250: 'sr-w7',
     sentinelle200: 'sr-w8', blindes100: 'robot:4', armes4: 'sr-w0', pvbas30: 'sr-b-armor', objets6: 'sr-m-tesla',
     jackpot: 'sr-m-luck', fragments1500: 'sr-i-frag', fusion1: 'sr-m-malware', elites50: 'sr-b-crit', vague10: 'robot:6',
-    kamikazes200: 'robot:3', evolutions3: 'sr-b-damage', blasterSeul8: 'sr-w0', boss2: 'robot:6',
+    kamikazes200: 'robot:3', evolutions3: 'sr-b-damage', blasterSeul8: 'sr-w0', boss2: 'robot:6', ombre: 'robot:6',
   },
   filtres: [
     { key: 'tous', label: 'Tous' },
@@ -6030,7 +6086,7 @@ export const SUCCES_UI = {
   ],
   sections: { reussis: 'Réussis', enCours: 'En cours', verrouilles: 'Verrouillés' },
   textes: {
-    sur: ' sur ', // « 6 sur 20 réussis »
+    sur: ' sur ', // « 6 sur 21 réussis »
     reussis: ' réussis',
     enCours: 'En cours',
     recompenses: 'Récompenses',
@@ -6374,7 +6430,6 @@ for (const d of DEFIS.list) if (SUCCES_N[d.key]) d.texte = SUCCES_N[d.key];
 
 // ----- Moins de texte : sous-titres redondants et aides permanentes retirés (§ E4.N.2) -----
 HUB.lead = '';
-HUB.textes.aideAgents = '';
 HUB.textes.tropPauvre = 'Pas assez de ' + MONNAIE.nom;
 HUB.textes.resetConfirm = ['Confirmer : tout effacer ?', 'Vraiment ? Succès, ' + MONNAIE.nom + ' et déblocages perdus'];
 //#endregion e4:N-textes-clairs-pixels
@@ -6496,7 +6551,7 @@ export const SAUVEGARDE_BOSS = {
   ],
   plafond: { soin: 0.5 }, // rangée d'objets pleine sans la Sauvegarde : soin de 50 % des PV max à la place (supposé)
 };
-// Notification (cadre FUI des succès, ui.toastSucces) : deux identifiants réservés hors des 20 succès ; textes fixes.
+// Notification (cadre FUI des succès, ui.toastSucces) : deux identifiants réservés hors des 21 succès ; textes fixes.
 export const TOAST_SAUVE = Object.freeze({
   SAUVE: 100,
   SAUVE_PLEIN: 101,
@@ -6738,7 +6793,8 @@ export const PAREFEU_RESERVE = {
   pv: 40,
   // barre bleue au-dessus du héros tant qu'il est chargé (src/barres-vie.js, même mesh que les barres des robots) :
   // couleur = haut du dôme du Pare-feu (PAREFEU_DOME.a.haut) ; hauteur au-dessus du sol, au-dessus de la tête du héros
-  // (PLAYER.height 1,8 × visualScale 1,15 ≈ 2,07 m) ; largeur arrondie au pixel d'art de BARRE.px
+  // (PLAYER.height 1,8 × visualScale 1,15 ≈ 2,07 m) ; largeur arrondie au pixel d'art de BARRE.px. § E5.AI : la même
+  // barre montre les PV sans Pare-feu chargé (mêmes dimensions)
   barre: { couleur: 0x46d2ff, hauteur: 2.45, largeurM: 1.2 },
 };
 export const PAREFEU_DOME = {
@@ -6782,6 +6838,8 @@ export const ACTION_INTERACT = ACTION_COUNT; // 19
 // Menus « Pile » (choix de Femz du 19/11) : Tab ouvre et ferme la FICHE de l'agent en partie, Échap reste le menu.
 // Action fixe (pas de ligne au tableau « Touches » : Tab est dans TOUCHES.reservees, aucune autre action ne peut la prendre).
 export const ACTION_FICHE = ACTION_COUNT + 1; // 20
+// Écran Agents (tâche 5) : le sélecteur de skin K / L de la fiche du Noyau est retiré (le skin se choisit dans la fiche de
+// l'écran Agents, à la souris ou aux flèches) ; K et L ne sont plus réservées : un réglage enregistré sur elles est gardé.
 export const ACTION_TOTAL = ACTION_COUNT + 2;
 INPUT.actions[ACTION_INTERACT] = ['KeyE'];
 INPUT.actions[ACTION_FICHE] = ['Tab'];
@@ -7064,6 +7122,7 @@ export const SUCCES_RECOMPENSE = {
     'fusion:malware': 'Un robot infecté et en feu laisse un nuage toxique 3 s.',
     'fusion:restauration': 'Quand la Sauvegarde vous sauve, un coffre gratuit en fin de vague.',
     'fusion:essaim': 'À chaque impulsion du Condensateur, chaque drone tire une rafale.',
+    'skin:shinobi:ombre': 'Un look de prestige pour le Shinobi, visible dans une prochaine mise à jour.',
   },
 };
 //#endregion e5:E-ui-1711
@@ -7314,6 +7373,130 @@ export const IDLES_AGENTS = {
   jambesClip: [false, false, true],
   jambesExp: 3, // § E5.F.14 : bassin et jambes du clip mêlés par poids^jambesExp (1 = comme le haut du corps)
 };
+// Écran Agents : la « vitrine » (grand portrait 3D de l'agent, grille → fiche, et écran titre). Idles cuits sur le robot
+// de chaque agent [Éclaireur, Bastion, Shinobi] (Mixamo : Offensive / Holding / Fight Idle ; tests/cuire-anim.mjs) —
+// joués seulement en vitrine, la pause et la partie gardent IDLES_AGENTS.
+// Tâche 3 (moteur, src/pause-agent.js : openVitrine / renderVitrine / closeVitrine) — même renderer, même scène et même
+// maillage que le portrait de la pause, en PLEINE DÉFINITION (pixel : px CSS par pixel rendu ; PAUSE.pixel reste celui de
+// la pause), borné au tampon de dessin du jeu (qualité adaptative, petites fenêtres) puis agrandi.
+// lumiere : lum-b5 (docs/maquettes-ecran-agents/lum-b5.json, validé par Femz le 22/11, planche-spot.png) — contre :
+// 1re lumière directionnelle (la seule que lit le matériau peint), position relative à la cible, ombres propres ;
+// spot : projecteur (vrai SpotLight lu par le matériau peint, sans ombre) ; ciel : hémisphère ; aplatCiel, wrap, bord :
+// uniformes partagés uSrCel.z, uSrLum.x, uSrCelBord / uSrCel.w (posés pour le rendu de la vitrine puis RENDUS) ; points :
+// lumières ponctuelles du monde (texture uSrPtTex, idem). parAgent[a] : surcharge par agent (mêmes clés, fusion d'un
+// niveau : { spot: { i: 18 } }), null = le jeu partagé. cadreOmbre : demi-côté (m) de la caméra d'ombre de « contre ».
+// cadres : fiche = maquette fiche-B5.png (caméra du portrait outil.cadre(2.12, 0) : fov 24° sur hRef m depuis yBas,
+// plongée 8°, hRef cadré sur part de la hauteur de la toile, point principal en centre × [largeur, hauteur]) ;
+// titre = caméra de repos de l'écran titre (MENU.clip.plan + MENU.camera.decalage, docs/maquettes-ecran-agents/
+// camera-titre.json : position relative aux pieds, quaternion, fov 40°, filmGauge 35, filmOffset −8,75 — agent vers 69 %
+// de la largeur, tête vers y 533 à 2560 × 1440) ; rapprochement[a] : caméra rapprochée (Shinobi × 1,076, maquette
+// titre-b5v3-shinobi.png). rotationDeg[a] : rotation du corps en plus de la vue 3/4 du portrait (PAUSE.camera.vueDeg) ;
+// lumiereRotDeg : lumières tournées avec la caméra (même éclairage relatif qu'en fiche). volume : boîte (m, autour des
+// pieds) projetée pour la région rendue — rien hors d'elle n'est dessiné. inclinaisonSolDeg : le disque du sol est
+// relevé vers la caméra (titre : caméra au ras du sol, un disque à plat ne se verrait pas). armes : os d'arme portés
+// [Éclaireur, Bastion, Shinobi] (ceux de la maquette).
+// sol : halo de lumière du projecteur + ombre de contact (aucun cercle) — maquette-B5.html (flaque, sol) : alpha =
+// force × (1 − r / rayon)^puissance, r elliptique (écrasement en profondeur), halo avancé de « avance » m vers la caméra ;
+// une flaque plus noire sous chaque pied (os pied_*) ; alphaMax garde le sol sous l'alpha des pixels de l'agent.
+export const VITRINE = {
+  // Tâche 4 : fonds peints (outils/fonds_webp.py : 4K → WebP 2560 × 1440, recadrés 16:9) et cartes de la grille PRÉCALCULÉES
+  // (outils/portraits_agents.mjs --cartes : 520 × 740, agent de la vitrine cadre fiche, lum-b5, posé sur le fond de l'écran
+  // Agents comme dans grille-B2.png). cartes(agentKey, skinKey, { verrou }) : verrou = la silhouette de l'agent (vitrine
+  // verrouillée) sur le même fond et le même voile, carte-<agent>-verrou.webp (cadenas et condition : dessinés par l'UI) ;
+  // un skin inconnu retombe sur « base » ; le skin « ombre » du Shinobi montre le Shinobi de base tant que son modèle
+  // n'existe pas. carte : dy[a] = décalage vertical (px de carte, négatif = vers le haut) de l'agent sur la carte, margeBas =
+  // marge minimale (px) entre le pixel le plus bas de l'agent et le bord bas (l'outil refuse la carte sinon ; 56 px = le débord de l'image dans sa boîte (0,6 rem) + la parallaxe max (0,5 rem), soit ~35 px de carte à 2560, + ~20 px de marge visible).
+  // grille (tâche 5) : le fond de la grille, adouci et assombri d'avance (outils/fonds_webp.py --grille, 640 × 360)
+  fonds: { agents: 'assets/ui/fond-agents.webp', titre: 'assets/ui/fond-titre.webp', grille: 'assets/ui/fond-agents-grille.webp' },
+  carte: { largeur: 520, hauteur: 740, dy: [0, 0, -58], margeBas: 56 },
+  cartes: (agentKey, skinKey, opts) => {
+    if (opts && opts.verrou) return `assets/ui/agents/carte-${agentKey}-verrou.webp`;
+    const sk = skinsDe(agentKey).includes(skinKey) ? skinKey : SKIN_BASE;
+    return `assets/ui/agents/carte-${agentKey}-${sk}.webp`;
+  },
+  // Tâche 6 : vignettes des skins de la fiche (outils/portraits_agents.mjs --vignettes : l'agent de la vitrine, cadre fiche,
+  // sur fond TRANSPARENT, recadré à largeur × hauteur = la zone image d'une vignette à 2560 × 1440, pieds à margeBas px du
+  // bas) ; verrou : sa silhouette (skin verrouillé, ou agent verrouillé). Même repli que les cartes (skin inconnu → base ;
+  // « ombre » = le Shinobi de base tant que son modèle n'existe pas).
+  vignette: { largeur: 280, hauteur: 238, part: 0.86, margeBas: 8 },
+  vignettes: (agentKey, skinKey, opts) => {
+    if (opts && opts.verrou) return `assets/ui/agents/vignette-${agentKey}-verrou.webp`;
+    const sk = skinsDe(agentKey).includes(skinKey) ? skinKey : SKIN_BASE;
+    return `assets/ui/agents/vignette-${agentKey}-${sk}.webp`;
+  },
+  idles: ['assets/anims/vitrine-eclaireur.json', 'assets/anims/vitrine-bastion.json', 'assets/anims/vitrine-shinobi.json'],
+  pixel: 1,
+  ombre: 2048,
+  lumiere: {
+    contre: { c: '#fff4e6', i: 1.7, p: [0.5, 6.0, 1.4], ombre: true, cadreOmbre: 1.4 },
+    spot: { c: '#f0fff4', i: 22, dist: 12, angle: 0.24, pen: 0.85, p: [0.3, 3.9, 1.5], vise: [0, 1.45, 0] },
+    ciel: { c: '#9fb0b8', sol: '#3a4448', i: 0.32 },
+    aplatCiel: 0.2,
+    wrap: 0.1,
+    bord: { c: [0.82, 0.96, 0.97], force: 0.6 },
+    points: [
+      { p: [0.4, 2.7, -1.6], c: [0.75, 0.95, 0.97], i: 6.0, r: 4.5 },
+      { p: [-0.6, 2.2, -1.4], c: [0.75, 0.95, 0.97], i: 3.0, r: 4.0 },
+      { p: [-0.45, 0.06, 0.8], c: [0.3, 1.0, 0.55], i: 0.08, r: 1.6 },
+      { p: [0.55, 0.06, 0.7], c: [0.3, 1.0, 0.55], i: 0.08, r: 1.6 },
+    ],
+    parAgent: [null, null, null],
+  },
+  cadres: {
+    fiche: {
+      fov: 24,
+      hRef: 2.12,
+      yBas: 0,
+      plongeeDeg: 8,
+      part: 1100 / 1440,
+      centre: [1230 / 2560, 570 / 1440],
+      xCentre: [0, 0.12, 0],
+      rotationDeg: [0, 0, 45],
+      lumiereRotDeg: 0,
+      volume: { rayon: 0.75, bas: -0.15, haut: 2.4 },
+      inclinaisonSolDeg: 0,
+    },
+    titre: {
+      fov: 40,
+      filmGauge: 35,
+      filmOffset: -8.75,
+      position: [4.353963340847836, 0.034577503654269925, 4.06011326587013],
+      quaternion: [0.09066070946836256, 0.39778673823758165, -0.05361594975645176, 0.9114119137759351],
+      cible: [0, 1.06, 0],
+      rapprochement: [1, 1, 1.076],
+      rotationDeg: [47, 47, 92],
+      lumiereRotDeg: 47,
+      volume: { rayon: 0.9, bas: -0.15, haut: 2.4 },
+      inclinaisonSolDeg: 7,
+    },
+  },
+  armes: [['arme_blaster'], [], ['arme_lame', 'arme_lame_d']],
+  sol: {
+    taille: 3.6,
+    alphaMax: 0.95,
+    flaque: { couleur: [225 / 255, 1, 238 / 255], force: 0.4, rayon: 1.35, puissance: 1.7, avance: 0.15, ecrasement: 1.05 },
+    ombre: { force: 0.5, rayon: 0.8, puissance: 1.6, ecrasement: 1.15 },
+    pieds: { force: 0.92, rayon: 0.42, ecrasement: 1.1, local: [0, -0.06, 0.03] },
+    // tâche 6 : le halo (rayon 1,35 m) déborde de la région rendue (volume.rayon 0,75 m) : il s'efface sur cette part de la
+    // région à gauche et à droite, et en bas, au lieu d'y être coupé net (rectangle visible sur le décor peint)
+    fonduBord: [0.2, 0.05],
+  },
+  // Tâche 7 : écran titre (src/menu/accueil.js) — fond peint (fonds.titre) + agent choisi en vitrine (cadre titre, caméra
+  // fixe) + poussière. Valeurs en fractions de l'écran (16:9, mesurées sur la maquette titre-b5v3 à 2560 × 1440).
+  // voile : dégradé sombre sous le menu (composer-titre.mjs : 0,86 → 0,72 à 560 px → 0,4 à 860 px → 0 à 1180 px).
+  // faisceau : cône du projecteur au-dessus de l'agent (haut : x 1690 → 1840 px en y 0 ; bas : 1450 → 2080 px en y 1165) ;
+  // force = opacité de sa lumière (écran) en bas du cône. flaque : halo de lumière au sol (x, y, largeur, hauteur, force).
+  // poussiere (Femz, 22/11 : « de légères dust particules ») : fines, lentes, peu nombreuses, éclairées dans le faisceau ;
+  // nombre de grains, taille (px à 1440 px de haut), vitesse (part de la hauteur par seconde), opacité max (dans le
+  // faisceau), ambiante (part de l'opacité hors faisceau), vie (s, min et max : fondu d'entrée et de sortie), zone (x min,
+  // x max, y max de l'écran : jamais devant le menu, à gauche).
+  titre: {
+    voile: [[0, 0.86], [560 / 2560, 0.72], [860 / 2560, 0.4], [1180 / 2560, 0]],
+    faisceau: { haut: [1690 / 2560, 1840 / 2560], bas: [1450 / 2560, 2080 / 2560], yBas: 1165 / 1440, force: 0.11 },
+    flaque: { x: 1770 / 2560, y: 1165 / 1440, largeur: 880 / 2560, hauteur: 110 / 1440, force: 0.42 },
+  },
+  poussiere: { nombre: 42, taille: 3.4, vitesse: 0.011, opacite: 1, ambiante: 0.15, vie: [6, 13], zone: [0.47, 0.93, 0.86] },
+};
 // Contraintes articulaires (retour de Femz du 17/11 au soir : « rajoute des contraintes au corps, là il se plie
 // inhumainement le dos ») : bornes des angles d'Euler de chaque os, DANS SON ORDRE (racine = bassin XYZ, buste YXZ :
 // x = penché, + en avant ; y = torsion ; z = roulis ; pièces XZY : x = levée / flexion, z = écart), appliquées à la fin de
@@ -7500,8 +7683,8 @@ export const COQUE_REACTIVE = {
 // cape que l'Éclaireur ». Le Shinobi porte TROIS tissus simulés (src/anim/tissus.js, même Verlet que la cape) à la
 // place de la cape : pan ENTRE LES JAMBES (bassin devant), pan du DOS (bas du dos), QUEUE DE L'ÉCHARPE (cou, buste).
 // Coordonnées : repère du MODÈLE agent-shinobi.glb (m ; +Z = l'avant, +X = la gauche du personnage ; hanches à
-// y 1,115, x ±0,137 ; dos du bassin z −0,09 ; nuque z −0,13 à y 1,63 ; katana du dos de (0,25 ; 1,11 ; −0,23) à
-// (−0,21 ; 1,92 ; −0,23)). Un tissu : haut (milieu de la rangée accrochée), cote (sens de la largeur ; la face avant
+// y 1,115, x ±0,137 ; dos du bassin z −0,09 ; nuque z −0,13 à y 1,63 ; katana du dos de (0,25 ; 1,11 ; −0,28) à
+// (−0,21 ; 1,92 ; −0,28)). Un tissu : haut (milieu de la rangée accrochée), cote (sens de la largeur ; la face avant
 // du tissu regarde (bas × −cote)), bas (sens de la longueur), largeurs haut / bas, longueur (sans les pointes), cols ×
 // rows (dernière rangée = pointes), longueur et décalage de chaque pointe, raideurs, traînées (1/s), gravité, souffle
 // (m/s), poids des pointes (> 1 : plus légères), couloir (demi-largeur en x : le pan reste entre les cuisses), devantJambes (sort des cuisses et tibias vers l'avant du
@@ -7517,11 +7700,15 @@ export const TISSUS = {
   souffleHz: 0.7,
   flottementHz: 3.2, // ondes du flottement (Hz)
   marge: 0.02, // m — le tissu reste à cette distance des capsules
-  // profils du torse (src/anim/profil-corps.js, Femz 22/11 : écart entre les tissus et le corps) : ils remplacent les
-  // capsules du bassin et du dos ; le tissu reste à margeCorps du contour relevé. Par pièce : plaquer ('dos' | 'devant'),
-  // ecart (m, accroches et repos), adherence ([x, y, z] m/s², repère de l'os : poussée vers le corps à l'arrêt)
-  margeCorps: 0.008,
-  adherenceVmax: 1.5, // m/s — l'adhérence s'efface avec la vitesse du bassin : nulle au-delà
+  // pan du dos et écharpe (plan.signe +1) : sur le DOS RÉEL du modèle comme la cape (ANIM.cape.dosReel, mêmes valeurs)
+  // — sans le plan de la pièce ni les capsules du bassin et de cape_dos, accroche posée sur la surface
+  dosReel: ANIM.cape.dosReel,
+  // pan devant (plan.signe −1) : sur le DEVANT RÉEL du torse et de la tête (dos-reel.surfaceDos(…, 'devant'), fix de la
+  // fusion de 0.5.13) — accroches posées sur le ventre, jamais dans le torse ni la tête ; adherence (m/s²) : poussée vers le
+  // corps à l'arrêt, effacée en course comme celle du dos (dosReel.vitesse, tau) ; accroche (m) : écart des accroches au
+  // devant du torse du modèle au repos (à la marge seule, 0,8 cm, le haut du pan entrait de 0,9 cm dans le ventre à
+  // l'arrêt, 25 points ; 1,4 cm : accroches à 2,4 cm du corps posé, aucun point dedans)
+  devantReel: { adherence: 3, accroche: 0.014 },
   tente: { jambes: 0.05, katana: 0.08 }, // m — autour des jambes et du katana, les voisines restent aussi du bon côté
   teleport: 0.8, // m — saut d’accroche en une image au-delà duquel les tissus sont replacés (le dash fait 0,3 m par image)
   rayonBras: 0.065, // m — capsules des bras (épaule → main) : bras fins du Shinobi
@@ -7532,7 +7719,7 @@ export const TISSUS = {
   lisere: { couleur: 0xef9628, largeur: 0.028, gain: 1.0 }, // accent du Shinobi, sur les deux bords de chaque tissu
   bassin: { a: [0, 0.97, -0.005], b: [0, 1.17, -0.005], rayon: 0.1 }, // volume du bassin (os du bassin)
   dos: { a: [0, 1.215, 0], b: [0, 1.531, 0], rayon: 0.129 }, // repli si le .glb n'a pas cape_dos
-  katana: { a: [0.225, 1.125, -0.23], b: [-0.19, 1.9, -0.23], rayon: 0.035 }, // katana porté dans le dos (axe mesuré), suit l'os arme_katana
+  katana: { a: [0.225, 1.125, -0.28], b: [-0.19, 1.9, -0.28], rayon: 0.045 }, // katana porté dans le dos (axe mesuré sur le modèle d'identité du 22/11 : z −0,28, il était −0,23 avant), suit l'os arme_katana
   pieces: [
     {
       nom: 'pan', os: 'bassin', haut: [0, 1.125, 0.135], cote: [-1, 0, 0], bas: [0, -1, 0.05], couloir: 0.05, devantJambes: true,
@@ -7541,7 +7728,6 @@ export const TISSUS = {
       raideur: 1, raideurCisaillement: 0.6, raideurFlexion: 0.1, raideurPointe: 0.9,
       traineeNormale: 2.6, traineeTangente: 0.25, gravite: 9.8, souffle: 0.4, poidsPointes: 1.6, flottement: 3,
       plan: { signe: -1, z: 0.03 },
-      plaquer: 'devant', ecart: 0.01, adherence: [0, 0, -2.5],
     },
     {
       nom: 'dos', os: 'bassin', haut: [0, 1.09, -0.105], cote: [1, 0, 0], bas: [0, -1, -0.07], derriereKatana: true,
@@ -7550,7 +7736,6 @@ export const TISSUS = {
       raideur: 1, raideurCisaillement: 0.6, raideurFlexion: 0.12, raideurPointe: 0.9,
       traineeNormale: 1.7, traineeTangente: 0.25, gravite: 9.8, souffle: 0.5, poidsPointes: 1.6, flottement: 4,
       plan: { signe: 1, z: -0.07 },
-      plaquer: 'dos', ecart: 0.01, adherence: [0, 0, 3],
     },
     {
       nom: 'echarpe', os: 'buste', haut: [0.05, 1.635, -0.145], cote: [1, 0, 0.15], bas: [0.18, -0.55, -1], derriereKatana: true,
@@ -7559,7 +7744,6 @@ export const TISSUS = {
       raideur: 1, raideurCisaillement: 0.6, raideurFlexion: 0.08, raideurPointe: 0.9,
       traineeNormale: 3.2, traineeTangente: 0.3, gravite: 9.8, souffle: 0.7, poidsPointes: 1.8, flottement: 4,
       plan: { signe: 1, z: -0.06 },
-      plaquer: 'dos', ecart: 0.01, // sans adhérence : poussée vers le dos, elle frôlait le katana porté en travers
     },
   ],
 };
@@ -7831,8 +8015,6 @@ export function rareteTexte(r) {
   const R = RARITIES[r];
   return R ? R.name + ' · rareté ' + (r + 1) + '/' + RARITIES.length : '';
 }
-AGENT_SCREEN.rootSous = 'arme de départ'; // sous l'arme signature de la carte d'agent, après l'étiquette « ROOT »
-AGENT_SCREEN.rootBulle = 'Root : la rareté la plus haute (6/6). L’arme de départ de cet agent.';
 
 // ----- A9 : piste sous le chrono, en mots de joueur (variante B gardée) -----
 PALIERS_VAGUES.explication = 'Le marchand : vos fragments contre des améliorations d’arme.'; // sous le titre « Décryptage »
@@ -7908,7 +8090,7 @@ export const SYNERGIES = {
   prefixe: 'Utile avec : ',
   cartes: {
     crit: { passifs: ['reflexe', 'ombre'], objets: ['detonator', 'scope'] }, // Réflexe, Frappe de l'ombre : critiques
-    fireRate: { objets: ['tesla', 'cryo', 'burn'], fin: ' (chances par coup)' }, // plus de coups, plus de chances
+    fireRate: { objets: ['tesla', 'burn'], fin: ' (chances par coup)' }, // plus de coups, plus de chances ; § E5.AL : sans le Cryogel, retiré
     dashCd: { objets: ['dashcore'] }, // Moteur cinétique : chaque dash blesse
   },
   soin: 'Soigne aussi {n} PV', // Blindage renforcé (B.heal), sur sa ligne
@@ -8617,6 +8799,10 @@ export const REGLAGES = {
     { key: 'reduits', label: 'Réduits' },
   ],
   flashsDefaut: 'normaux',
+  // § E5.AG (Femz, 22/11) : sensibilité de la souris — UN réglage, multiplicateur des deux vitesses de base
+  // (CAMERA_3P.sensibilite en Caméra libre, CAMERA_3P.curseur.sensibilite en Vue fixe) ; curseur 0 → min, milieu → 1 (la
+  // vitesse de 0.5.13), bout → max, en progression géométrique sur chaque moitié ; affiché en % (25 % à 300 %)
+  sensibilite: { min: 0.25, max: 3, defaut: 1 },
   // § E5.R : une ligne d'aide sous chaque réglage de la fenêtre Paramètres (comprise au 1er lancement)
   aides: {
     flashs: 'Réduits : rien ne clignote vite, flashs des coups adoucis (sensibilité à la lumière).',
@@ -8629,8 +8815,9 @@ export const REGLAGES = {
     volume: 'Tout le son du jeu.',
     sfx: 'Tirs, impacts, interface.',
     musique: 'La bande-son.',
+    sensibilite: 'Vitesse de la caméra en Caméra libre, du curseur en Vue fixe.', // § E5.AG
   },
-  libelles: { graphismes: 'Graphismes', secousses: 'Secousses', flashs: 'Flashs', deplacement: 'Déplacement', volume: 'Volume général', sfx: 'Effets sonores', musique: 'Musique' },
+  libelles: { graphismes: 'Graphismes', secousses: 'Secousses', flashs: 'Flashs', deplacement: 'Déplacement', volume: 'Volume général', sfx: 'Effets sonores', musique: 'Musique', sensibilite: 'Sensibilité de la souris' },
   // § E5.AB.14 : le clic pour avancer façon LoL du mode « Vue fixe » (rétabli, Femz 22/11)
   souris: {
     arrivee: 0.35, // m — le héros s'arrête à cette distance du point visé (au pas d'une image, il ne tremble pas autour)
@@ -8648,6 +8835,9 @@ export const CONFORT_FLASHS = {
   reposFlash: 0.5, // s de pause après un flash (0,12 en normal) : un robot sous le feu ne flashe plus que 1,6 fois par seconde au plus
   hitstopMul: 0.5, // × la durée des arrêts sur image
 };
+// § E5.AG : état vivant de la sensibilité de la souris (main.setSensibilite l'écrit ; lu à chaque écart de la souris par
+// camera.tourner et input.ecartSouris : une lecture de propriété, aucune allocation)
+export const SENSIBILITE_SOURIS = { mul: 1 };
 //#endregion reglages-femz
 
 //#region e5:U-visee-souris
@@ -8772,6 +8962,314 @@ export const TUTO_BORNES = {
   halo: [0.34, 0.16, 0.07], // opacité des paliers du halo (1, 2, 3 pixels d'art autour du triangle)
 };
 //#endregion e5:AE-tuto-bornes
+
+//#region e5:AI-barre-vie
+// Barre de vie au-dessus de l'agent (ARCHITECTURE.md § E5.AI ; Femz, 22/11 : « La barre bleue du Pare-feu, quand elle est
+// épuisée, devient la barre de vie du perso : plus besoin de l'UI barre de vie en bas de l'écran », cœur vert à droite qui
+// clignote sous 20 %, bouclier bleu quand le Pare-feu est actif, fondu doux après 30 s sans dégât). Même mesh et même
+// dessin que les barres des robots (src/barres-vie.js, BARRE) ; position : PAREFEU_RESERVE.barre.hauteur ; bleu :
+// PAREFEU_RESERVE.barre.couleur.
+export const BARRE_VIE = {
+  // vert des PV du jeu : croix des bornes (DECORS.glow), Batterie, éclat du soin (RETOURS_GUIDE.soin.couleur), le cœur ;
+  // le blanc (BARRE.neutralColor) est la barre des blindés et des fusionnés
+  couleurPV: 0x5cff8a,
+  // taille : celle de la barre bleue du Pare-feu de main (Femz, 22/11 : « la barre qu'on avait de base n'était pas la
+  // même ») — en mètres comme les barres des robots : PAREFEU_RESERVE.barre.largeurM, BARRE.hPx, BARRE.px, BARRE.lift
+  // (1er rendu : taille fixe à l'écran, 2 px par pixel d'art à 720 p, 20 pixels d'art de long : jugée trop épaisse)
+  icone: { ecartArt: 2 }, // pixels d'art entre l'icône (à GAUCHE, 5 × 5 : la hauteur de la barre) et le début de la barre
+  basPV: 0.2, // part de PV sous laquelle le cœur clignote et la barre reste affichée
+  // cœur sous basPV : Normaux = presque carré ; Réduits (CONFORT_FLASHS.reduits) = sinus doux, ≤ CONFORT_FLASHS.hzMax ;
+  // creux = luminosité au plus bas (le cœur ne s'éteint jamais)
+  clignote: { hz: 3, creux: 0.25, hzReduits: 1, creuxReduits: 0.55 },
+  // attente en temps de JEU (pause et écrans de choix ne comptent pas), fondus en temps réel (smoothstep)
+  fondu: { delaiS: 30, sortieS: 1.2, entreeS: 0.15 },
+  rappelS: 4, // s affichée au moins après une recharge du Pare-feu finie ou un soin
+  // passage bouclier ↔ PV : le plein descend d'un coup (traîne de BARRE.trail), monte par un ressort critique (1/s) ;
+  // couleur de la barre et fondu croisé cœur ↔ bouclier en couleurS s
+  passage: { omega: 12, couleurS: 0.3, epsilon: 0.001 },
+  soinEclat: 0.55, // au soin, le plein s'éclaircit de cette part vers le blanc, puis retombe en RETOURS_GUIDE.soin.barre.secondes
+  // icônes en aplat d'une seule couleur, celle de la barre (Femz, 22/11 : ni contour, ni reflet) — avant : liseré,
+  // ombre, reflet et halo en paliers
+  coeur: { corps: '#5cff8a' },
+  bouclier: { corps: '#46d2ff' },
+};
+//#endregion e5:AI-barre-vie
+
+//#region e5:AH-virus-gaz
+// Virus : gaz vert sur les robots infectés, son d'infection (ARCHITECTURE.md § E5.AH ; Femz, 22/11 : « ajouter un visuel
+// vert en jeu, avec de petites particules de gaz » ; « remplacer son son »). Bouffées pixel qui montent de chaque robot
+// infecté (E.dotT0 > 0), style `style` à la suite du lot TIRS (aucun appel de dessin de plus), pool préalloué.
+// Couleurs LINÉAIRES (normalisées par le look pixel : seule la teinte et l'intensité comptent).
+export const VIRUS_GAZ = {
+  actif: true,
+  style: 15, // ruban face caméra NON daté (f = âge relatif écrit par le CPU) ; 15 : premier numéro libre (§ E5.AH)
+  cap: 160, // bouffées en vol au plus (pool) ; le lot TIRS grandit d'autant (le gaz ne prend jamais la place d'un tir)
+  taux: 4, // bouffées par seconde et par robot infecté (phase propre à chaque robot, tirée de son uid)
+  naissance: 2, // bouffées émises tout de suite à l'infection (lisible dès l'image du coup)
+  vie: 0.95, // s — vie d'une bouffée…
+  vieVar: 0.15, // … ± 15 % (tirage par bouffée)
+  depart: 0.8, // naissance à hover + hauteur du type × depart (dans le corps)
+  ecart: 0.45, // × rayon du robot : écart horizontal de la naissance autour de son centre
+  montee: 1.2, // m — montée totale (amortie : 1 − (1 − u)²)
+  balance: 0.09, // m — amplitude du balancement latéral (sinus, sous-pixel)
+  balanceHz: 0.8, // tours par seconde du balancement
+  suivi: 7, // 1/s — l'ancre de la bouffée rejoint le robot (lissage exponentiel) : courte traîne quand il marche
+  taille: 0.12, // m — rayon de la bouffée (× 0,6 à la naissance → × 1,2 à la fin) ; planche du 22/11 : à 0,17 les bouffées couvraient les corps
+  marge: 0.3, // m — demi-côté du quad (fenêtre du quad comprise : le contour ondulé, ≤ 1,25 × taille × 1,2, n'y touche pas)
+  // Teinte : le vert-jaune de l'objet (0x7ee020, sa couleur au HUD ; teinte 89°) — 44° des gemmes d'XP (#4be36a, 133°),
+  // 48° du vert du soin (#5cff8a, 137°), sans bleu. corps : ton « couleur » du look ; liser : ton sombre saturé ;
+  // coeur : petit point de la bouffée jeune, seul au-dessus du seuil du bloom (1,35), coupé en Flashs Réduits.
+  corps: [0.209, 0.745, 0.0144], // 0x7ee020 en linéaire
+  intensite: 1.05, // intensité du corps au sommet de la vie (seuils du look : 0,2 sombre / 0,8 couleur / 2,0 cœur)
+  liser: [0.08, 0.42, 0.0], // vert profond saturé (ton sombre)
+  coeur: 2.3, // intensité du cœur de la bouffée jeune (> 2,0 : ton « cœur », petit halo) ; 0 = aucun
+  voile: 0.3, // alpha du corps (< 0,35 : le look n'assombrit pas le fond — planche du 22/11 : à 0,5 les bouffées faisaient des taches opaques)
+  etoileTic: true, // l'éclat d'étoile de chaque tic des statuts reste pour le Virus (à trancher par Femz)
+  // Son de l'infection (SFX.VIRUS_INFECTION) : une demande par robot qui passe de sain à infecté, à sa position.
+  son: { id: SFX.VIRUS_INFECTION },
+};
+VFX.capacite.tirs += VIRUS_GAZ.cap;
+// « Phil Michalski - Sci fi tech hydraulic door short heavy air release both ways » (catalogue de Femz) : attaque de
+// l'aller, 1,02 s (fin acoustique 0,78 s + 0,25 s), transposé de + 0,53 demi-ton (résonance 253,8 Hz, si3 + 47 c → do4),
+// −26,1 LU de sonie effective (manifeste). 0,4 s entre deux départs, 2 voix au plus : une horde infectée ne fait pas un
+// mur de souffle (≤ −23 LU à deux voix). pitchVar 0 : la hauteur reste sur do.
+AUDIO.sounds[SFX.VIRUS_INFECTION] = { dur: 1.05, gain: 0.17, minInterval: 0.4, maxVoices: 2, pitchVar: 0, priority: 1 };
+// Le son de l'objet est REMPLACÉ : plus de CD_FIRE commun à l'ouverture de la fenêtre du Virus (la 1re infection la suit
+// de quelques images ; les deux ensemble doubleraient le son)
+RECHARGES.items.virus.depart = Object.assign({}, RECHARGES.items.virus.depart || {}, { son: 0 });
+//#endregion e5:AH-virus-gaz
+
+//#region e5:AJ-equilibrage-aoe
+// Équilibrage du 22/11 (ARCHITECTURE.md § E5.AJ ; Femz, vague 21 au lance-roquettes : « c'est cheaté, je one-shot tous
+// les mobs, et les boss je les détruis facilement »). Trois décisions : (1) boss, blindés et élites ne prennent que 20 %
+// des dégâts de zone ; (2) Overclock : 5 exemplaires au plus, sans effet sur les armes de zone ; (3) robots plus forts
+// dès la vague 6 (vagues 1 à 5 inchangées), réglé par la mesure (tests/e5-AJ-mesures.mjs, build fort au lance-roquettes).
+/** Drapeau de damage.hitEnemyF : coup de ZONE (explosion, onde, nappe, nuage, champ). DMG est gelé : bit hors de DMG. */
+export const DMG_ZONE = 512;
+export const AOE = {
+  resistance: 0.8, // part des dégâts de zone retirée aux cibles résistantes : elles en prennent 1 − 0,8 = 20 %
+  types: ['boss', 'blinde'], // ENEMY_KEYS des types résistants (tous rangs de boss)
+  elites: true, // élites porteuses (EFLAG.ELITE), de tout type, avec ou sans modificateur
+  anneauExempte: true, // blindés de l'anneau d'acier (EFLAG.WALL) : pleins dégâts (Femz, 21/11 : « sinon c'est trop dur »)
+  // armes dont les coups sont de zone (WEAPON_KEYS) : drapeau DMG_ZONE sur tous leurs coups (sauf les diagonales du
+  // marteau, de la mêlée), et cadence sans la part de l'Overclock
+  armesZone: ['rockets', 'mines', 'grenade', 'cannon', 'emp', 'pool', 'smoke', 'hammer'],
+  overclockSansZone: true, // false : l'Overclock accélère aussi les armes de zone (comme avant le 22/11)
+};
+// Overclock : 5 exemplaires au plus (au plus +30 % de cadence, −15 PV max). Il n'est plus proposé au plafond.
+ITEMS[ITEM.OVERCLOCK].maxStacks = 5;
+ITEMS[ITEM.OVERCLOCK].pile = '−3 PV max par exemplaire (jamais sous 40 PV max)\n5 exemplaires au plus\nSans effet sur les armes de zone (roquettes, grenades…)';
+ITEMS[ITEM.OVERCLOCK].detail = 'Vos armes tirent plus vite, sauf les armes de zone (roquettes, mines, grenades, grosse tourelle, champ EMP, nappe corrosive, fumigènes, marteau à ondes). En échange, vos PV max baissent un peu à chaque exemplaire. 5 exemplaires au plus.';
+/** Exemplaires au plus de l'objet id (65535 : sans limite). Pure. */
+export function itemMaxStacks(id) {
+  const m = ITEMS[id] && ITEMS[id].maxStacks;
+  return m > 0 ? m : 65535;
+}
+// Courbe : croissance par vague dès la vague `de` — facteur^(n − de + 1), par la croissance existante (DIFFICULTY.growth,
+// lue par threatMul au-delà de la prise en main) et, pour les vagues `de` à ease.waves, par les entrées de la prise en
+// main multipliées du même facteur (pas d'escalier entre la vague 8 et la 9). Vagues 1 à de − 1 : rien ne change.
+// bossPv / bossDegats : false = le boss (et ses invocations, ses drones-boucliers) garde la courbe d'avant pour ce levier.
+export const COURBE_AJ = { de: 6, pv: 1.03, degats: 1.015, bossPv: false, bossDegats: true }; // réglé par la mesure (§ E5.AJ, Mesures) : 1,06 / 1,03 au départ
+{
+  const D = DIFFICULTY;
+  const K = COURBE_AJ;
+  D.ease.bossHp = D.ease.hp.slice(); // leviers du boss : la prise en main d'avant, sans croissance
+  D.ease.bossDmg = D.ease.dmg.slice();
+  for (let n = K.de; n <= D.ease.waves; n++) {
+    D.ease.hp[n - 1] *= Math.pow(K.pv, n - K.de + 1);
+    D.ease.dmg[n - 1] *= Math.pow(K.degats, n - K.de + 1);
+  }
+  D.growth.from = K.de;
+  D.growth.hp = K.pv;
+  D.growth.dmg = K.degats;
+  if (!K.bossPv) BOSS_PRISE_EN_MAIN.leviers.hp = 'bossHp';
+  if (!K.bossDegats) BOSS_PRISE_EN_MAIN.leviers.dmg = 'bossDmg';
+}
+//#endregion e5:AJ-equilibrage-aoe
+
+//#region e5:AF-course-shinobi
+// § E5.AF (Femz, 22/11 : « Quand Shinobi avance, je veux cette animation [NarutoRun 12Frame] — ne s'applique qu'en
+// course avant ») : course « ninja » du Shinobi, mesurée image par image sur la référence (ARCHITECTURE.md § E5.AF.1) :
+// buste très penché, tête devant, bras tendus en arrière et écartés, grandes foulées basses. Elle se mêle à la course de
+// référence du jeu (heros-anim : mêmes pieds cloués, même calage de phase) par un poids w ; actif: false = la course
+// d'avant au bit près. Éclaireur et Bastion : jamais (w = 0).
+const DEG_AF = Math.PI / 180;
+export const COURSE_SHINOBI = {
+  actif: true,
+  // pose clé par image (12 images à 24 i/s = 0,5 s), i = 0 : pose du talon droit (image 4 du clip) ; degrés — cuisse
+  // (+ en avant, depuis la verticale), genou (flexion), pied (semelle, + pointe en bas, 0 = à plat), orteils (aucun
+  // dans le clip : 0), bassin (hauteur de hanche − moyenne, en longueurs de jambe) ; appui = part du cycle au sol, celle
+  // de la course de référence (mesurée 25 à 29 % dans le clip). Pied i = 1 : 2,2° mesurés = à plat (erreur de mesure ; à
+  // 2,2° le pied passait sur la base des orteils une image trop tôt : glissement mesuré au § E5.AF.10). Pied i = 2 : 9,3°
+  // mesurés mis à 0 (pied à plat jusqu'à i = 2 : sans phase « à plat », le déroulé du pas d'anim-pieds échouait).
+  ref: {
+    n: 12,
+    cuisse: [55.4, 72.6, 28.1, -42.4, -58.6, -65.8, -56.3, -39.0, 20.3, 69.2, 83.0, 80.2],
+    genou: [14.7, 87.9, 95.5, 24.0, 18.4, 29.1, 60.3, 90.1, 141.6, 146.7, 127.1, 76.5],
+    pied: [-57.9, 0, 0, 109.9, 132.1, 159.0, 183.4, 171.5, 154.3, 143.9, 91.6, -1.9],
+    orteils: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    bassin: [-0.0163, -0.0459, -0.0375, 0.0261, 0.0389, 0.0177, -0.0375, -0.0459, -0.0247, 0.0389, 0.0601, 0.0261],
+  },
+  // § E5.AF.3 : à la vitesse nominale du Shinobi (PLAYER.speed × AGENTS[2].stats.speedMul), un cycle dure cycleS (celui
+  // du clip) ; le trajet de la cheville pendant l'appui est mis à l'échelle σ pour que le pied d'appui ne glisse pas
+  cycleS: 0.5,
+  echelleAppui: [1, 1, 1, 1, 0.5, 0, 0, 0, 0, 0, 0, 0.5], // part de σ appliquée à chaque pose (appui : 1, voisines : ½)
+  piedAppuiMax: 60 * DEG_AF, // rad — semelle bornée pendant l'appui (la pointe qui rase, 110°, n'a pas de sens cloué)
+  plafondVitesse: 1.6, // × PLAYER.speed — plafond de la cadence sous le poids w (avant : 1,15, gardé à w = 0)
+  // § E5.AF.4 : haut du corps (directions MONDE, mesurées ; écrites en local selon le penché du corps)
+  penche: 0.85, // rad — penché ajouté au buste (au-dessus de l'abdomen) ; visé : ligne hanche → cou à 58° (mesure 58,0°)
+  leanRacine: 0.2, // rad — penché ajouté au corps entier (compensé aux hanches)
+  teteMonde: 28 * DEG_AF, // rad — tête depuis la verticale (mesure 28,4°)
+  // rad — tangage local de la tête borné à −34° (borne du cou à −35°, § E5.F.7) : le buste penché de ~67° demandait −39°
+  // (sonde tests/e5-AF-bornes.mjs : 210 corrections de contraindre par 300 images, qui allouaient) ; la tête vue est alors
+  // à ~33° de la verticale, dans la plage mesurée (22 à 40°)
+  teteMin: -34 * DEG_AF,
+  brasMonde: 6 * DEG_AF, // rad — bras au-dessus de l'horizontale ARRIÈRE (mesure 6,4°)
+  brasEcart: 24 * DEG_AF, // rad — bras écartés (vue de face : 23 à 25°)
+  avantBras: 7.5 * DEG_AF, // rad — coude plié (mesure 7,5°)
+  // § E5.AF.5 : course avant = Shinobi, état de locomotion « avant » existant (seuils ANIM.corps.seuils : 60°, hystérésis
+  // 10°), vitesse > vitesseMin × PLAYER.speed
+  vitesseMin: 0.35,
+  fonduS: 0.2, // s — rampe linéaire du poids, lue à travers un smoothstep (aucun à-coup)
+};
+//#endregion e5:AF-course-shinobi
+
+//#region e5:AL-retrait-cryogel
+// Retrait du Cryogel (ARCHITECTURE.md § E5.AL ; Femz, 22/11, retour d'un testeur : « le gel est inutile »). L'id 1
+// reste à sa place (tables par id, méta) : l'objet est marqué retiré — jamais tiré (meta.ITEM_OK), jamais affiché
+// (Collection du Noyau), dans aucun verrou. Orage glacé (Bobine Tesla + Cryogel) ne peut plus se faire : fermé, ses
+// réglages de gel copiés dans sa règle. Shuriken givré gardé, débloqué par les Éclats (« éclate en 4 morceaux »).
+ITEMS[ITEM.CRYO].retire = true;
+FUSIONS[0].enabled = false; // Orage glacé
+Object.assign(FUSION_RULES[0], { factor: 0.3, seconds: 1.2 }); // gel de l'Orage glacé (vitesse × 0,3 pendant 1,2 s), lu par items.js
+EVOLUTIONS[7].item = 'shrapnel'; // Shuriken givré : Boomerang + Éclats (était le Cryogel)
+//#endregion e5:AL-retrait-cryogel
+
+//#region e5:AM-frappe-ombre
+// Frappe éclair automatique, frappée par une ombre (ARCHITECTURE.md § E5.AM ; Femz, 22/11 : plus aucune touche, la
+// frappe part seule ; le héros ne bouge pas, une OMBRE de l'agent fonce sur la ligne et tranche). Stats et évolution
+// inchangées ; seuls les textes et la touche sont repris ici (les régions plus haut gardent leur histoire).
+export const FRAPPE_OMBRE = {
+  // Choix de la ligne : directions comptées autour du héros (une tous les 360 / directions degrés). 32 : une tous les
+  // 11,25° ; le plus petit robot au bout de la plus longue ligne (8,2 m, demi-largeur 0,8 + rayon 0,3) couvre ± 7,7° :
+  // il tombe toujours dans au moins une direction.
+  directions: 32,
+  // Ombre : temps simulé (s) — course en sortie de courbe cubique, tenue au bout, dissolution en gros pixels
+  course: 0.14,
+  tenue: 0.12,
+  fondu: 0.22,
+  trainee: 2, // images rémanentes derrière la tête (une copie du corps chacune)
+  ecart: 0.04, // s de retard d'une image rémanente sur la précédente, le long du trajet
+  opaciteTrainee: [0.6, 0.32], // opacité de chaque image rémanente (la tête : 1)
+  penche: 0.32, // rad — buste penché vers l'avant pendant la course (redressé pendant la tenue)
+  // Look : corps presque noir teinté de l'accent de l'agent, liseré de Fresnel à l'accent (au-dessus du seuil du bloom)
+  sombre: 0.14, // × accent : le corps (1re capture à 0,07 : corps invisible sur le sol sombre, seul le liseré se lisait)
+  noir: 0.03, // gris ajouté au corps (il ne disparaît pas sur un sol sombre)
+  haut: 0.6, // éclaircissement du corps vers la tête (× sombre, de 0 au pied à `haut` à 1,8 m)
+  gain: 1.9, // × accent : le liseré
+  liseré: 2.2, // exposant du Fresnel (plus grand = liseré plus fin)
+  pixel: 4, // côté de la cellule du tramage (px du tampon), celui du look des VFX (src/vfx/look.js, variante active)
+  ordre: 2.5, // renderOrder (passe opaque) : après les robots, avant les zones annoncées transparentes
+};
+// Plus de touche : l'action garde son indice (ACTION est figé) sans aucune touche ; sa ligne quitte le tableau « Touches ».
+// Le stockage garde SA clé (TOUCHES.cle = STRIKE_KEYS.cle) : l'entrée « frappe » d'un réglage enregistré est ignorée
+// (sa touche est libérée) et disparaît à la prochaine écriture (input.js).
+INPUT.actions[ACTION.STRIKE] = [];
+TOUCHES.lignes = TOUCHES.lignes.filter((L) => L.id !== 'frappe');
+{
+  const F = WEAPONS.find((W) => W.id === WEAPON.FLASH);
+  F.desc = 'Une ombre de vous fonce seule et tranche les robots alignés.';
+  F.detail = "Toute seule, dès qu'elle est prête : une ombre de votre agent fonce sur la ligne où il y a le plus de robots et les tranche. Vous ne bougez pas.";
+  F.descModele = null; // plus de « Touche {touche} » (input.majTexteFrappe retiré)
+  F.detailModele = null;
+}
+MARCHAND_PHRASES['Distance'] = "L'ombre file plus loin.";
+//#endregion e5:AM-frappe-ombre
+
+//#region e5:AK-mort-claire
+// Cause de la mort évidente (ARCHITECTURE.md § E5.AK ; Femz, 22/11 — testeur : « je sais pas comment je suis mort »).
+// Au coup mortel : ralenti en SOLO seulement (jamais en multi), caméra vers la source, flèche rouge au-dessus d'elle ;
+// à l'écran de fin, une phrase par cause qui dit ce qui s'est passé et comment l'éviter.
+export const MORT_CLAIRE = {
+  ralenti: {
+    echelle: 0.25, // temps simulé par seconde réelle pendant le ralenti
+    duree: 1.0, // s RÉELLES entre le coup mortel et l'écran de fin
+  },
+  cadrage: {
+    montee: 0.35, // s réelles — glissé de la caméra du héros vers le point de cadrage (smoothstep)
+    demiEcartMax: 6, // m — au-delà de 2 × cette distance héros–source, le cadrage garde la source à cette distance du centre
+  },
+  rayonSuivi: 40, // m — robot de la cause cherché à cette distance au plus du point de référence
+  fleche: {
+    pxArt720: 3, // px d'écran par pixel d'art à 720 p (6 à 1440 p) — la flèche du tuto des bornes en a 2
+    leve: 0.45, // m — pointe au-dessus de la tête du robot suivi
+    sol: 1.1, // m — pointe au-dessus du sol quand la source n'est qu'un endroit (obus, mine, flaque…)
+    entree: 0.12, // s réelles — fondu d'entrée
+    pop: 0.28, // s réelles — échelle en « retour » (easeOutBack)…
+    rebond: 2.2, // …surcharge de la courbe
+    flottement: { amplitude: 3, periode: 0.55 }, // pixels d'art (vers le haut), s réelles
+  },
+  couleurs: { trait: '#1a0406', corps: '#ff3b3b', ombre: '#b3242b', clair: '#ffe1e1', halo: '255, 59, 59' },
+  halo: [0.4, 0.2, 0.09], // opacité des paliers du halo (1, 2, 3 pixels d'art autour du triangle)
+  // [type ENEMY.* à suivre (−1 : aucun), modificateur d'élite ELITE_MOD.* (0 : aucun)] par cause (CAUSE.*)
+  suivi: [],
+  // Une phrase par cause (CAUSE.*) : ce qui s'est passé, comment l'éviter. Vouvoiement, mots du jeu, au plus un nombre ;
+  // {dash} = touche réelle du dash (input.libelle). AUCUNE : pas de phrase.
+  conseils: [],
+};
+{
+  const S = MORT_CLAIRE.suivi;
+  const K = MORT_CLAIRE.conseils;
+  for (let c = 0; c < CAUSE_COUNT; c++) S[c] = [-1, 0];
+  for (let t = 0; t < ENEMY_COUNT; t++) S[CAUSE.CONTACT + t] = [t, 0];
+  S[CAUSE.BOND] = [ENEMY.RODEUR, 0];
+  S[CAUSE.PIQUE] = [ENEMY.DRONE, 0];
+  S[CAUSE.CHARGE] = [ENEMY.BLINDE, 0];
+  S[CAUSE.TIR] = [ENEMY.TIREUR, 0];
+  S[CAUSE.OBUS_TIREUR] = [ENEMY.TIREUR, 0];
+  S[CAUSE.FOREUSE] = [ENEMY.FOREUSE, 0];
+  S[CAUSE.SCANNER_CHUTE] = [ENEMY.SCANNER, 0];
+  S[CAUSE.SCANNER_LASER] = [ENEMY.SCANNER, 0];
+  for (const c of [CAUSE.BOSS_FRAPPE, CAUSE.BOSS_RUEE, CAUSE.BOSS_OBUS, CAUSE.BOSS_BALAYAGE]) S[c] = [ENEMY.BOSS, 0];
+  S[CAUSE.TRAINEE_ELITE] = [-1, ELITE_MOD.SURCHARGE];
+  // EXPLOSION, FLAQUE, MINE, OBUS_ELITE, FRAPPE_ORBITALE, CAPSULE : la source n'existe plus ou c'est le sol → l'endroit
+
+  const elite = (k) => nomEliteQ(k).replace('Élite', 'élite'); // « élite Instable »
+  const ins = ELITES.mods.find((m) => m.key === 'instable');
+  const boss = 'Le boss ' + ENEMIES.types[ENEMY.BOSS].name;
+  K[CAUSE.AUCUNE] = '';
+  K[CAUSE.CONTACT + ENEMY.RODEUR] = 'Les rôdeurs frappent au contact : ne les laissez pas vous encercler, dashez ({dash}) pour sortir de la meute.';
+  K[CAUSE.CONTACT + ENEMY.DRONE] = 'Les drones frappent au contact et vont très vite : restez en mouvement pour ne pas vous faire rattraper.';
+  K[CAUSE.CONTACT + ENEMY.TIREUR] = 'Un tireur vous a frappé au contact : ne restez pas collé aux robots, gardez de l’espace autour de vous.';
+  K[CAUSE.CONTACT + ENEMY.KAMIKAZE] = 'Les kamikazes foncent droit sur vous : gardez vos distances, vos armes les détruisent avant qu’ils arrivent.';
+  K[CAUSE.CONTACT + ENEMY.BLINDE] = 'Le blindé frappe fort au contact : il tourne lentement, passez par le côté au lieu de rester devant lui.';
+  K[CAUSE.CONTACT + ENEMY.REPARATEUR] = 'Les réparateurs frappent aussi au contact : ne restez pas collé aux robots, gardez de l’espace autour de vous.';
+  K[CAUSE.CONTACT + ENEMY.BOSS] = boss + ' frappe fort au contact : ne restez jamais collé à lui, tournez autour à distance.';
+  K[CAUSE.CONTACT + ENEMY.FOREUSE] = 'La foreuse frappe au contact quand elle sort du sol : éloignez-vous d’elle dès qu’elle apparaît.';
+  K[CAUSE.CONTACT + ENEMY.POSEUR] = 'Le poseur frappe aussi au contact : ne restez pas collé à lui, détruisez-le de loin.';
+  K[CAUSE.CONTACT + ENEMY.SCANNER] = 'Le scanner ne bouge pas, mais il frappe au contact : ne restez pas collé à lui.';
+  K[CAUSE.CONTACT + ENEMY.DIVISEUR] = 'Le diviseur frappe au contact, et ses morceaux aussi : reculez quand il se coupe en petits robots.';
+  K[CAUSE.BOND] = 'Un rôdeur s’est accroupi puis a bondi sur vous : quand un trait rouge apparaît au sol, sortez de son axe.';
+  K[CAUSE.PIQUE] = 'Un drone a foncé sur vous en piqué : un trait rouge au sol montre sa trajectoire, sortez-en sur le côté.';
+  K[CAUSE.CHARGE] = 'Un blindé a foncé droit devant : quand un trait rouge apparaît au sol devant lui, sortez-en sur le côté.';
+  K[CAUSE.TIR] = 'Les tireurs vous tirent dessus de loin : foncez-leur dessus en premier, ou dashez à travers leurs balles ({dash}).';
+  K[CAUSE.OBUS_TIREUR] = 'Un tireur a lancé un obus : sortez du cercle rouge au sol avant qu’il tombe.';
+  K[CAUSE.EXPLOSION] = 'Un kamikaze a explosé à côté de vous : quand un cercle rouge apparaît autour de lui, éloignez-vous.';
+  K[CAUSE.FLAQUE] = 'Un drone détruit laisse une flaque électrique qui blesse tant qu’on est dedans : n’y restez pas.';
+  K[CAUSE.MINE] = 'Une mine de poseur a explosé : ne passez pas sur les mines au sol, et si l’une se déclenche, sortez vite de son cercle.';
+  K[CAUSE.FOREUSE] = 'Une foreuse est sortie du sol sous vos pieds : quand un cercle rouge apparaît sous vous, bougez tout de suite.';
+  K[CAUSE.SCANNER_CHUTE] = 'Un scanner vous est tombé dessus : sortez de la marque au sol avant qu’il atterrisse.';
+  K[CAUSE.SCANNER_LASER] = 'Le laser du scanner balaie la zone autour de lui : sortez de sa ligne, ou dashez à travers ({dash}).';
+  K[CAUSE.BOSS_FRAPPE] = boss + ' a frappé le sol autour de lui : quand un cercle rouge apparaît sous lui, éloignez-vous.';
+  K[CAUSE.BOSS_RUEE] = boss + ' a foncé sur vous : quand un couloir rouge apparaît au sol, sortez-en sur le côté.';
+  K[CAUSE.BOSS_OBUS] = boss + ' a lancé une volée d’obus : sortez des cercles rouges par le côté resté libre.';
+  K[CAUSE.BOSS_BALAYAGE] = 'Le laser du boss balaie un grand arc : passez derrière lui, ou dashez à travers le rayon ({dash}).';
+  K[CAUSE.TRAINEE_ELITE] = 'Une ' + elite('surcharge') + ' laisse derrière elle une traînée électrique : ne marchez pas dans sa trace.';
+  K[CAUSE.OBUS_ELITE] = 'Une ' + elite('instable') + ' lâche ' + ins.shells + ' obus autour d’elle quand elle meurt : après l’avoir détruite, sortez des cercles rouges.';
+  K[CAUSE.FRAPPE_ORBITALE] = 'Frappe orbitale : des tirs tombent du ciel sur les cercles rouges, sortez-en avant l’impact.';
+  K[CAUSE.CAPSULE] = 'La capsule de ravitaillement vous est tombée dessus : quand sa marque apparaît au sol, attendez qu’elle soit posée.';
+}
+//#endregion e5:AK-mort-claire
 
 //#region e5:X8-lot8
 // Lot 8 de l'audit UX, côté robots (ARCHITECTURE.md § E5.X8 ; Femz, 23/11 : « E8 : oui, 0,6 s »). Lu par enemies.js,

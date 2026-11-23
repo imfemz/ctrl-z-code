@@ -2597,7 +2597,7 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
    « sélection inversée » passait tout le texte de la carte visée au sombre (--cy-solid) en comptant sur un fond cyan
    plein ; le cadre carte mère (.sr-facet, plus bas) a remplacé ce fond par le vert sombre --ca-fond : texte sombre sur
    fond sombre (≈ 1,1:1 mesuré). Le texte garde désormais ses couleurs de repos à tous les états ; la carte visée se voit
-   au cadre crème et à la lueur (règle .sr-card:hover du cadre carte mère). Mêmes retraits pour .sr-acard et les objets. */
+   au cadre crème et à la lueur (règle .sr-card:hover du cadre carte mère). Mêmes retraits pour les objets. */
 [data-sr-theme='carte-mere'] .sr-card:hover,
 [data-sr-theme='carte-mere'] .sr-card:focus-visible {
   --edge: var(--sr-cyan);
@@ -2806,10 +2806,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   animation-fill-mode: none;
 }
 
-
-
-
-
 @keyframes cy-compte-a {
   0% { opacity: 0; transform: scale(0.4); }
   33% { opacity: 0.6; transform: scale(0.4); }
@@ -2853,9 +2849,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
-
-
 
 /* États du glitch (réf FUI, case « GLITCH ») : 0 % invisible → 6 % bande du milieu seule, décalée → 16 % trois bandes
    décalées → 30 % autre découpe → 42 % net → 58 % nouvelle découpe → 66 % invisible → 70 % deux tranches → 80 % net. */
@@ -3866,126 +3859,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   color: rgba(255, 59, 59, 0.75);
 }
 
-/* ----- Écran de choix de l'agent ----- */
-.sr-agent {
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  overflow: hidden;
-}
-
-/* couche 0 de la parallaxe : la grille, plus grande que l'écran pour que son glissement ne découvre aucun bord */
-.sr-agent-fond {
-  position: absolute;
-  inset: -2.5rem;
-  pointer-events: none;
-  will-change: transform;
-}
-
-.sr-agent-head,
-.sr-agents,
-.sr-agent-pied {
-  position: relative;
-}
-
-.sr-agent-head {
-  text-align: center;
-}
-
-.sr-agent-head h2 {
-  font-size: 2.75rem;
-}
-
-.sr-agent-head .sr-lead {
-  margin-top: 0.5rem;
-}
-
-/* couche 1 : les trois cartes */
-.sr-agents {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 1rem;
-  will-change: transform;
-}
-
-/* Carte d'agent : même habillage qu'une carte de bonus (.sr-card), sous sa propre classe */
-.sr-acard {
-  -webkit-appearance: none;
-  appearance: none;
-  --cut: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.7rem;
-  width: 19.5rem;
-  margin: 0;
-  padding: 1.35rem 1.4rem 1.2rem;
-  border: 0;
-  color: var(--sr-bone);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  outline: none;
-  animation: sr-rise var(--sr-screen-s) ease-out backwards;
-}
-
-.sr-acard:hover {
-  --edge: var(--sr-cyan);
-  --fill: var(--sr-ink-2);
-}
-
-.sr-acard .sr-card-desc {
-  font-size: 0.9375rem;
-  line-height: 1.35;
-  color: var(--sr-muted);
-}
-
-.sr-acard-haut {
-  display: flex;
-  gap: 0.9rem;
-  width: 100%;
-}
-
-.sr-acard-portrait {
-  flex: none;
-  width: 6rem;
-  height: 8.5rem;
-  overflow: hidden;
-}
-
-/* couche 2 : le portrait (fig : couche de parallaxe ; img : 48 × 68 px d'art au Noyau, affiché au plus proche voisin) */
-.sr-acard-fig {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  will-change: transform;
-}
-
-.sr-acard-portrait img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-}
-
-/* 18/11 (choix de Femz, « A en animé ») : écran des agents — carte élargie, grand portrait pixel (80 × 120 px d'art,
-   PORTRAIT) ; la planche de l'idle (--n images côte à côte) défile en steps() ; boucle sans saut : le clip entier
-   (normal) ou un extrait en aller-retour (alternate). prefers-reduced-motion : image 0, figée. */
-.sr-agent .sr-acard {
-  width: 22rem;
-}
-
-.sr-agent .sr-acard-portrait {
-  width: 8.6667rem;
-  height: 13rem;
-}
-
-.sr-agent .sr-acard-portrait img.sr-anime {
-  width: calc(var(--n) * 100%);
-  animation: sr-acard-idle var(--dur) steps(var(--n), jump-none) infinite var(--dir);
-}
-
 @keyframes sr-acard-idle {
   from {
     transform: translateX(0);
@@ -3993,188 +3866,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   to {
     transform: translateX(calc((1 - var(--n)) / var(--n) * 100%));
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sr-agent .sr-acard-portrait img.sr-anime {
-    animation: none;
-    transform: none;
-  }
-}
-
-.sr-acard-ident {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.sr-acard-touches {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.35rem;
-  min-height: 1.2rem;
-}
-
-.sr-acard .sr-card-name {
-  margin-top: 0;
-  color: var(--ac);
-}
-
-.sr-acard-role {
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--sr-muted);
-}
-
-.sr-acard-sig {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.4rem 0.6rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 75, 92, 0.55);
-}
-
-.sr-acard .sr-acard-sig .sr-ic {
-  font-size: 1.5rem;
-  color: var(--sr-bone);
-}
-
-.sr-acard-sig-nom {
-  flex: 1;
-  font-size: 0.9375rem;
-}
-
-.sr-acard-root {
-  padding: 0.12rem 0.35rem 0.08rem;
-  font-size: 0.6875rem;
-  letter-spacing: 0.12em;
-  color: #ff4b5c;
-  box-shadow: inset 0 0 0 1px currentColor;
-}
-
-.sr-acard-passif {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-height: 3.6rem;
-}
-
-.sr-acard-passif-nom {
-  font-size: 0.875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ac);
-}
-
-.sr-acard-barres {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.3rem;
-  width: 100%;
-  margin-top: auto;
-}
-
-.sr-acard-barre {
-  display: grid;
-  grid-template-columns: 4.6rem auto 1fr;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--sr-muted);
-}
-
-.sr-acard-barre .sr-pips {
-  display: flex;
-  gap: 0.15rem;
-}
-
-.sr-acard-barre .sr-pip {
-  width: 0.7rem;
-  height: 0.45rem;
-}
-
-.sr-acard-barre .sr-pip.sr-on {
-  background: var(--ac);
-  box-shadow: none;
-}
-
-.sr-acard-barre-val {
-  text-align: right;
-  color: var(--sr-bone);
-}
-
-[data-sr-theme='carte-mere'] .sr-agent {
-  background: rgba(4, 7, 11, 0.8);
-}
-
-[data-sr-theme='carte-mere'] .sr-agent-fond {
-  background: var(--cy-trame);
-}
-
-[data-sr-theme='carte-mere'] .sr-agent-head h2::before {
-  content: 'SYSTÈME / AGENT';
-  display: block;
-  margin-bottom: 0.55rem;
-  font: 500 0.75rem/1 var(--sr-mono);
-  letter-spacing: 0.12em;
-  color: var(--cy-muted);
-}
-
-[data-sr-theme='carte-mere'] .sr-agent-head {
-  animation: cy-descend 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-}
-
-[data-sr-theme='carte-mere'] .sr-agent-head .sr-lead {
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--cy-muted);
-}
-
-[data-sr-theme='carte-mere'] .sr-acard {
-  --cut: 0.75rem;
-  gap: 0.7rem;
-  padding: 1.1rem 1.2rem 1.05rem;
-  animation: cy-ouvre 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-}
-
-[data-sr-theme='carte-mere'] .sr-acard > * {
-  animation: cy-entre 0.2s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-}
-
-[data-sr-theme='carte-mere'] .sr-acard:nth-child(1) { animation-delay: 0.06s; }
-[data-sr-theme='carte-mere'] .sr-acard:nth-child(2) { animation-delay: 0.14s; }
-[data-sr-theme='carte-mere'] .sr-acard:nth-child(3) { animation-delay: 0.22s; }
-[data-sr-theme='carte-mere'] .sr-acard:nth-child(1) > * { animation-delay: 0.32s; }
-[data-sr-theme='carte-mere'] .sr-acard:nth-child(2) > * { animation-delay: 0.4s; }
-[data-sr-theme='carte-mere'] .sr-acard:nth-child(3) > * { animation-delay: 0.48s; }
-
-/* carte visée : bloc cyan plein, cadre « actif » (sélection inversée) */
-[data-sr-theme='carte-mere'] .sr-acard:hover,
-[data-sr-theme='carte-mere'] .sr-acard:focus-visible {
-  --edge: var(--sr-cyan);
-  border-image-source: url('assets/ui/carte/panneau-actif.png');
-}
-
-[data-sr-theme='carte-mere'] .sr-acard .sr-card-name {
-  font: 600 1.25rem/1.2 var(--sr-mono);
-}
-
-[data-sr-theme='carte-mere'] .sr-acard .sr-card-desc {
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-/* l'agent courant (celui que garde Entrée) : repère de la teinte de l'agent sur le bord gauche */
-[data-sr-theme='carte-mere'] .sr-acard.sr-courant {
-  box-shadow: inset 0.1875rem 0 0 var(--ac);
-}
-
-[data-sr-theme='carte-mere'] .sr-agent-pied {
-  animation: cy-entre 0.2s cubic-bezier(0.2, 0.8, 0.3, 1) 0.56s backwards;
 }
 
 /* (16/11, 13a) la « sélection inversée » de la carte d'agent visée est retirée : textes, jauges et portrait gardent
@@ -6305,16 +5996,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   will-change: transform;
 }
 
-.sr-hub-aide {
-  margin-bottom: 0.8rem;
-  font-size: 0.75rem;
-  color: var(--ca-muet, #a9dcb6);
-}
-
-.sr-hub-agents {
-  justify-content: flex-start;
-}
-
 /* ----- Collection ----- */
 .sr-hub-famille {
   margin-bottom: 0.9rem;
@@ -6410,8 +6091,7 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 }
 
 /* cadenas pixel (verrouillé : pas encore dans le tirage) */
-.sr-hub-cadenas,
-.sr-acard-cadenas {
+.sr-hub-cadenas {
   display: none;
   position: absolute;
   width: 0.75rem;
@@ -6741,55 +6421,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   border-top: 1px solid var(--ca-trait-2, rgba(116, 224, 154, 0.2));
 }
 
-/* ----- Cartes d'agents (écran des agents et onglet Agents) : visée au clavier, verrouillée, agent de départ ----- */
-[data-sr-theme='carte-mere'] .sr-acard.sr-sel,
-.sr-acard.sr-sel {
-  box-shadow: inset 0 0 0 var(--ca-bw, 2px) var(--ca-sel, #fff6c8), inset 0 0 0 0.35rem rgba(255, 246, 200, 0.12), 0 0 0 1px var(--ca-ombre, #000), 0 0 0.75rem rgba(255, 246, 200, 0.25);
-}
-
-.sr-acard-portrait {
-  position: relative;
-}
-
-.sr-acard.sr-verrou .sr-acard-portrait img {
-  opacity: 0.32; /* assombri sur le fond sombre de la carte (ni filter ni mix-blend-mode : contrat de l'interface) */
-}
-
-.sr-acard.sr-verrou .sr-acard-cadenas {
-  display: block;
-  left: 50%;
-  top: 50%;
-  width: 1.5rem;
-  height: 1.5rem;
-  transform: translate(-50%, -50%);
-}
-
-.sr-acard.sr-verrou {
-  cursor: not-allowed;
-}
-
-.sr-acard-cond .sr-acard-passif-nom {
-  color: var(--ca-jaune, #f4f050);
-}
-
-.sr-acard-cond .sr-acard-cond-txt {
-  color: var(--ca-texte, #f3fff4);
-}
-
-.sr-acard-cond-prog {
-  margin-top: 0.35rem;
-  font-size: 0.75rem;
-  color: var(--ca-jaune, #f4f050);
-}
-
-.sr-acard-tag {
-  margin-top: 0.35rem;
-  font: 500 0.625rem/1 var(--sr-mono, var(--sr-text));
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ca-jaune, #f4f050);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .sr-hub-panneau {
     animation: none;
@@ -6815,20 +6446,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   width: 3rem;
 }
 
-.sr-hub .sr-acard-touches {
-  display: none;
-}
-
-.sr-hub .sr-acard,
-[data-sr-theme='carte-mere'] .sr-hub .sr-acard {
-  gap: 0.5rem;
-  padding: 0.85rem 1rem 0.8rem;
-}
-
-.sr-hub-contenu-agents .sr-hub-aide {
-  margin-bottom: 1.1rem;
-}
-
 .sr-hub-vente-btn .sr-key {
   display: none;
 }
@@ -6848,16 +6465,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 
 .sr-hub-succes-prog {
   margin-top: 0.2rem;
-}
-
-.sr-hub .sr-acard-ident > .sr-card-desc {
-  display: none;
-}
-
-.sr-hub-pied .sr-hub-aide {
-  flex: 1;
-  margin: 0;
-  text-align: center;
 }
 
 /* =====================================================================================================================
@@ -7970,15 +7577,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   display: none;
 }
 
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-passif {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.65rem 0.75rem 0.7rem;
-  background: rgba(6, 10, 15, 0.45);
-  box-shadow: inset 0 0 0 1px var(--cy-line-2, rgba(116, 224, 154, 0.25));
-}
-
 .sr-fiche-passif-nom {
   font: 500 0.75rem/1.2 var(--sr-mono);
   letter-spacing: 0.08em;
@@ -7996,46 +7594,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   color: var(--ca-jaune, #f4f050);
 }
 
-/* fiche au Noyau : ni niveau, ni bonus, ni objets (aucune partie) ; l'arme signature seule, dans la 1re case */
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau {
-  width: 21.5rem;
-  padding: 1.6rem 1.4rem 1.3rem;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-niv,
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-bonus,
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-objets,
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-arme:not(.sr-fiche-sig) {
-  display: none;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-corps {
-  grid-template-columns: auto 1fr;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-col:empty,
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-corps > .sr-fiche-col:last-child {
-  display: none;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-corps > .sr-fiche-col:first-child {
-  align-self: start;
-  width: 8.6rem;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-fiche-corps {
-  align-items: start;
-  gap: 0.6rem;
-}
-
-/* un agent verrouillé (cartes de l'écran des agents et du Noyau) : rien d'autre que le nom, le cadenas, la condition */
-.sr-acard.sr-verrou .sr-acard-role,
-.sr-acard.sr-verrou .sr-acard-ident > .sr-card-desc,
-.sr-acard.sr-verrou .sr-acard-sig,
-.sr-acard.sr-verrou .sr-acard-barres {
-  visibility: hidden;
-}
-
 /* case de l'arme d'un agent verrouillé : « ? » au centre */
 [data-sr-theme='carte-mere'] .sr-fiche-arme.sr-fiche-inconnu .sr-fiche-arme-niv {
   position: static;
@@ -8045,20 +7603,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 
 [data-sr-theme='carte-mere'] .sr-fiche-arme.sr-fiche-inconnu .sr-ic {
   display: none;
-}
-
-/* CARACTÉRISTIQUES au Noyau : les stats de base (total = base) — la 3e colonne « base / écart » n'a rien à dire */
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau > .sr-carac {
-  width: 14rem;
-  box-sizing: border-box;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-carac-det {
-  display: none;
-}
-
-[data-sr-theme='carte-mere'] .sr-fiche.sr-fiche-noyau .sr-carac-liste {
-  grid-template-columns: 1fr auto;
 }
 
 /* cases cliquables de la fiche au Noyau (comme en pause) */
@@ -8073,86 +7617,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 
 [data-sr-theme='carte-mere'] .sr-hub .sr-fiche-inconnu {
   cursor: default;
-}
-
-/* onglet Agents : sélecteur compact à gauche, puis CARACTÉRISTIQUES, la fiche et sa fenêtre d'élément */
-.sr-hub-agents-page {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-}
-
-.sr-hub .sr-agents.sr-hub-agents {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  width: 12.5rem;
-}
-
-.sr-hub-fiche-hote {
-  position: relative;
-  flex: none;
-  padding: 0 20.75rem 0 14.72rem; /* colonne CARACTÉRISTIQUES (14 rem + 0,72) à gauche, fenêtre (20 rem + 0,75) à droite */
-}
-
-[data-sr-theme='carte-mere'] .sr-hub-fiche-hote > .sr-fiche {
-  animation: none;
-}
-
-[data-sr-theme='carte-mere'] .sr-hub-fiche-hote > .sr-fiche > * {
-  animation: none;
-}
-
-/* cartes compactes : vignette, nom, rôle, cadenas, condition et progression (les nœuds de B sont gardés) */
-.sr-hub .sr-hub-agents .sr-acard,
-[data-sr-theme='carte-mere'] .sr-hub .sr-hub-agents .sr-acard {
-  width: 100%;
-  min-width: 0;
-  max-width: none;
-  gap: 0.3rem;
-  padding: 0.55rem 0.7rem 0.55rem;
-}
-
-.sr-hub .sr-hub-agents .sr-acard-sig,
-.sr-hub .sr-hub-agents .sr-acard-passif:not(.sr-acard-cond),
-.sr-hub .sr-hub-agents .sr-acard-barres,
-.sr-hub .sr-hub-agents .sr-acard-ident > .sr-card-desc,
-.sr-hub .sr-hub-agents .sr-acard-cond > .sr-acard-passif-nom {
-  display: none !important;
-}
-
-.sr-hub .sr-hub-agents .sr-acard-haut {
-  gap: 0.6rem;
-}
-
-.sr-hub .sr-hub-agents .sr-acard-portrait {
-  width: 2.4rem;
-  height: 3.4rem;
-}
-
-.sr-hub .sr-hub-agents .sr-acard-cond {
-  margin-top: 0;
-}
-
-.sr-hub .sr-hub-agents .sr-acard-cond-txt {
-  font-size: 0.6875rem;
-  line-height: 1.3;
-}
-
-.sr-hub .sr-hub-agents .sr-acard-cond-prog {
-  margin-top: 0.15rem;
-}
-
-/* § E4.L.2 : la vignette d'un verrouillé est une silhouette pleine (image fabriquée par ui.js) : plus d'assombrissement
-   par l'opacité (le fond se verrait au travers) */
-.sr-acard.sr-verrou .sr-acard-portrait img {
-  opacity: 1;
-}
-
-.sr-hub .sr-hub-agents .sr-acard.sr-verrou .sr-acard-cadenas {
-  width: 1.1rem;
-  height: 1.1rem;
 }
 
 /* « Jouer · <agent> » refusé (agent verrouillé) */
@@ -8179,16 +7643,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 [data-sr-theme='carte-mere'] .sr-hub .sr-fiche > .sr-detail {
   gap: 0.5rem;
   padding: 1.1rem 1.2rem 1rem;
-}
-
-.sr-hub .sr-agents.sr-hub-agents {
-  gap: 0.4rem;
-}
-
-.sr-hub .sr-hub-agents .sr-acard,
-[data-sr-theme='carte-mere'] .sr-hub .sr-hub-agents .sr-acard {
-  gap: 0.2rem;
-  padding: 0.45rem 0.65rem 0.45rem;
 }
 
 /* ===== Étape 4, chantier N (ARCHITECTURE.md § E4.N) : monnaie « Pixels », bannière de révision expliquée ===== */
@@ -8582,11 +8036,6 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
   background: var(--ca-sel, #fff6c8);
   clip-path: polygon(0 0, 100% 0, 0 100%);
   pointer-events: none;
-}
-
-.sr-hub .sr-hub-agents .sr-acard.sr-fixe,
-[data-sr-theme='carte-mere'] .sr-hub .sr-hub-agents .sr-acard.sr-fixe {
-  box-shadow: inset 0 0 0 var(--ca-bw, 2px) var(--ca-sel, #fff6c8), inset 0 0 0 0.35rem rgba(255, 246, 200, 0.12), 0 0 0 1px var(--ca-ombre, #000), 0 0 0.75rem rgba(255, 246, 200, 0.25);
 }
 
 /* =====================================================================================================================
@@ -9492,18 +8941,7 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 [data-sr-theme='carte-mere'] .sr-hud .sr-pal-effet {
   color: #f2c14e;
 }
-/* A10 : « arme de départ » sous l'étiquette ROOT de la carte d'agent */
-.sr-acard-sig {
-  flex-wrap: wrap;
-  row-gap: 0.15rem;
-}
-.sr-acard-root-sous {
-  flex-basis: 100%;
-  text-align: right;
-  font: 400 0.75rem/1.2 var(--sr-mono, var(--sr-display));
-  letter-spacing: 0.08em;
-  color: #c8e6d1;
-}
+
 /* A1-A3 : bulle de consigne (src/consignes.js) — le cadre FUI de la notification de succès, centrée sous le héros,
    au-dessus de la barre de PV ; ne prend aucun clic ; entre en glissant de 0,4 rem et en fondu, sort en fondu */
 .sr-consigne {
@@ -9667,6 +9105,18 @@ html.sr-en-jeu[data-sr-theme='carte-mere'] #ui-root * {
 .sr-over-cause-mort .sr-over-cause-val {
   color: var(--sr-red);
 }
+
+/* #region e5:AK-mort-claire */
+/* § E5.AK : sous « Détruit par », la phrase qui explique ce qui s'est passé et comment l'éviter — texte clair, un peu
+   plus petit que les deux lignes, jamais coupé (retour à la ligne), largeur de lecture bornée. */
+.sr-over-cause-conseil {
+  margin: -0.1rem 0 0.15rem;
+  max-width: 44rem;
+  font: 400 0.875rem/1.35 var(--sr-mono);
+  color: rgba(243, 255, 244, 0.88);
+  text-wrap: pretty;
+}
+/* #endregion e5:AK-mort-claire */
 
 /* § E5.Q (B14) : soin du héros — la barre de PV s'éclaire en vert : une couche verte dans le remplissage (elle en suit
    la largeur), dont seule l'opacité s'anime (contrat de l'interface : animations sur transform et opacity seulement,

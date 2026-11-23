@@ -10,8 +10,9 @@
 //   • fumigènes    : nuages au sol (un lancer toutes les throwEvery s) ; chaque tic blesse, ralentit et AVEUGLE : un
 //                    robot aveuglé subit des coups critiques assurés de toutes les armes du Shinobi (katana, grenades,
 //                    frappe éclair et lame de phase de weapons.js via isBlind) ;
-//   • frappe éclair: le héros file AREA m dans sa direction de marche, tranche la ligne (demi-largeur SPECIAL), puis
-//                    COUNT − 1 échos sur la même ligne ; part seulement s'il y a un robot sur la ligne ;
+//   • frappe éclair: part SEULE (§ E5.AM) : une ombre de l'agent file AREA m sur la ligne qui tranche le plus de robots
+//                    (demi-largeur SPECIAL), puis COUNT − 1 échos sur la même ligne ; le héros ne bouge pas ; part
+//                    seulement s'il y a un robot sur la ligne ;
 //   • grosse tourelle : un canon posé derrière le héros, SPECIAL s ; il tire COUNT obus en cloche sur les paquets ;
 //   • marteau      : frappe au sol ; COUNT ondes, la première sur le disque AREA, les suivantes sur l'anneau suivant ;
 //                    recul SPECIAL et robots sonnés.
@@ -31,6 +32,9 @@ import {
   WEAPONS,
 } from './config.js';
 import { ENEMY } from './config.js'; // § E5.D : réparateur prioritaire
+import { DMG_ZONE } from './config.js'; // § E5.AJ : diagonales du marteau hors zone
+
+import { RESOLVE } from './config.js'; // § E5.AM : bout de la ligne de la frappe (world.resolveMany)
 import { ARGF, E, F_DX, F_DZ, F_SX, F_SZ, F_T, F_V, P, mods, rand } from './state.js';
 import * as V from './vfx/projectiles.js';
 import { chargerPieces } from './anim/pieces.js';
@@ -43,9 +47,11 @@ import { COMBO, COMBOS as CB_CFG, GESTE as CB_GESTE } from './config.js';
 import { COMBO_ATTAQUE } from './config.js'; // § E5.F : une attaque = le combo entier
 import { TOURELLES_BOSS } from './config.js'; // § E5.F : grosse tourelle, le boss d'abord
 import { MARTEAU_COMBO } from './config.js'; // § E5.F.13 : combo du marteau (2 diagonales + frappe au sol)
+import { FRAPPE_OMBRE } from './config.js'; // § E5.AM : frappe automatique, ombre de l'agent
+import * as ombre from './ombre-frappe.js'; // § E5.AM
+import { OMBRE } from './ombre-frappe.js';
 //#region e5:U-visee-souris
-import { TRAIT as TRAIT_FRAPPE, VISEE } from './visee.js'; // § E5.U : frappe vers le curseur, trait d'annonce
-import * as visee from './visee.js';
+import { VISEE } from './visee.js'; // § E5.U : visée (§ E5.AM : départage des lignes de la frappe à égalité)
 let fireAccW = null; // weapons.fireAcc (cadence : 1 = prête)
 let usableW = null; // weapons : stats saines (1)
 //#endregion e5:U-visee-souris
@@ -160,19 +166,24 @@ export function isBlind(i) {
   return MARK_UID[i] === E.uid[i] && MARK_T[i] > S[S_CLOCK] ? 1 : 0;
 }
 
+//#region e5:AJ-equilibrage-aoe
+// § E5.AJ : fl = drapeaux du coup (flagsOf[w] ; les diagonales du marteau, de la mêlée, sans DMG_ZONE)
+const SANS_ZONE = ~DMG_ZONE & 0xffff;
+//#endregion e5:AJ-equilibrage-aoe
 /**
  * Coup de l'arme w sur le robot i : dégâts ARGF[F_V], source ARGF[F_SX], ARGF[F_SZ] (écrits par l'appelant).
- * critAdd : chance de critique en plus ; critMul > 0 : multiplicateur du critique (katana). Rend le résultat de hitEnemyF.
+ * critAdd : chance de critique en plus ; critMul > 0 : multiplicateur du critique (katana) ; fl : drapeaux DMG.* du coup
+ * (§ E5.AJ). Rend le résultat de hitEnemyF.
  */
-function strikeF(i, w, critAdd, critMul) {
+function strikeF(i, w, critAdd, critMul, fl) {
   const blind = isBlind(i) === 1;
-  if (!blind && critAdd === 0 && critMul === 0) return damage.hitEnemyF(i, w, flagsOf[w]);
+  if (!blind && critAdd === 0 && critMul === 0) return damage.hitEnemyF(i, w, fl);
   SAV[0] = mods.critChanceAdd;
   SAV[1] = mods.critMulAdd;
   mods.critChanceAdd = blind ? SAV[0] + 1 : SAV[0] + critAdd;
   if (critMul > 0) mods.critMulAdd = SAV[1] + (critMul - PLAYER.critMul);
   if (blind) N_CRIT_FORCED[0]++;
-  const r = damage.hitEnemyF(i, w, flagsOf[w]);
+  const r = damage.hitEnemyF(i, w, fl);
   mods.critChanceAdd = SAV[0];
   mods.critMulAdd = SAV[1];
   return r;
@@ -180,7 +191,7 @@ function strikeF(i, w, critAdd, critMul) {
 
 /** Coup de la lame de phase (weapons.js) : critique assuré sur un robot aveuglé, sinon hitEnemyF tel quel. */
 export function strikeBladeF(i, w) {
-  return strikeF(i, w, 0, 0);
+  return strikeF(i, w, 0, 0, flagsOf[w]);
 }
 
 function knockOut(i, cx, cz, kb) {
@@ -372,7 +383,7 @@ function cutKatana() {
     ARGF[F_V] = dmg;
     ARGF[F_SX] = P.x;
     ARGF[F_SZ] = P.z;
-    if (strikeF(i, w, W.critAdd, critMul) <= 0) continue;
+    if (strikeF(i, w, W.critAdd, critMul, flagsOf[w]) <= 0) continue;
     hits++;
     knockOut(i, P.x, P.z, W.knockback);
   }
@@ -435,7 +446,7 @@ function iaidoKatana(dmg, critMul) {
     ARGF[F_V] = dmg;
     ARGF[F_SX] = x0;
     ARGF[F_SZ] = z0;
-    if (strikeF(i, w, W.critAdd, critMul) <= 0) continue;
+    if (strikeF(i, w, W.critAdd, critMul, flagsOf[w]) <= 0) continue;
     hits++;
     knockOut(i, x0, z0, W.knockback);
   }
@@ -563,7 +574,7 @@ function slashLine() {
     ARGF[F_V] = dmg;
     ARGF[F_SX] = FL[0];
     ARGF[F_SZ] = FL[1];
-    if (strikeF(i, w, 0, 0) <= 0) continue;
+    if (strikeF(i, w, 0, 0, flagsOf[w]) <= 0) continue;
     hits++;
     knockOut(i, FL[0], FL[1], W.knockback);
   }
@@ -586,6 +597,123 @@ function slashLine() {
   S[S_FL_T] = W.echoGap;
 }
 
+//#region e5:AM-frappe-ombre
+// § E5.AM (Femz, 22/11) : la frappe part SEULE, dès que la recharge est prête et qu'une ligne partant du héros contient
+// au moins minTargets robots ; le héros ne bouge pas — une OMBRE de l'agent (src/ombre-frappe.js) file sur la ligne.
+// Choix de la ligne : FRAPPE_OMBRE.directions directions autour du héros ; chaque robot à portée compte dans celles dont
+// l'axe passe à moins de SPECIAL + son rayon de son centre (projection positive) ; un robot qui touche le héros compte
+// dans toutes. La plus grosse gagne ; à égalité, la plus proche de l'avant du héros. Contrôle exact (bout résolu contre
+// les décors, grid.querySegment) avant de partir. Un parcours des robots vivants par image d'attente, rien d'alloué.
+const AM_N = FRAPPE_OMBRE.directions;
+const AM_PAS = TAU / AM_N;
+const AM_CX = new Float64Array(AM_N); // cos, sin de l'axe de chaque direction (x, z), angle −π + (b + ½) × pas
+const AM_SZ = new Float64Array(AM_N);
+for (let b = 0; b < AM_N; b++) {
+  AM_CX[b] = Math.cos(-Math.PI + (b + 0.5) * AM_PAS);
+  AM_SZ[b] = Math.sin(-Math.PI + (b + 0.5) * AM_PAS);
+}
+const AM_CNT = new Int32Array(AM_N);
+const AM_CEN = new Float64Array(AM_N); // centrage : Σ (1 − écart à l'axe du robot / sa demi-ouverture), départage
+const AM_D = new Float64Array(4); // [0], [1] direction retenue ; [2], [3] avant du héros
+export const FRAPPE_AM = new Int32Array(4); // tests : [0] frappes parties, [1] attentes (aucune ligne), [2] robots de la dernière ligne, [3] direction
+
+const AM_RX = new Float64Array(1); // bout de la ligne à résoudre (world.resolveMany)
+const AM_RZ = new Float64Array(1);
+const AM_RR = new Float64Array(1);
+const AM_RM = new Uint8Array([RESOLVE.GROUND]);
+
+/** Robots vivants sur la ligne FL (même test que grid.querySegment), sans requête ni argument flottant. */
+function compterLigne() {
+  const x0 = FL[0];
+  const z0 = FL[1];
+  const sx = FL[2] - x0;
+  const sz = FL[3] - z0;
+  const len2 = sx * sx + sz * sz;
+  const inv = len2 > 1e-12 ? 1 / len2 : 0;
+  const half = FL[4];
+  let n = 0;
+  const nE = E.count;
+  for (let i = 0; i < nE; i++) {
+    if (E.alive[i] === 0) continue;
+    const px = E.x[i] - x0;
+    const pz = E.z[i] - z0;
+    const t = Math.min(1, Math.max(0, (px * sx + pz * sz) * inv));
+    const dx = px - sx * t;
+    const dz = pz - sz * t;
+    const rr = half + E.radius[i];
+    if (dx * dx + dz * dz <= rr * rr) n++;
+  }
+  return n;
+}
+
+/** Meilleure direction de la frappe depuis le héros (AM_D[0], AM_D[1]) ; rend son compte (0 : aucun robot à portée). */
+function choisirLigne() {
+  const o = FLASH * STAT_COUNT;
+  const dist = effective[o + STAT.AREA];
+  const half = effective[o + STAT.SPECIAL];
+  const d2max = dist * dist;
+  const px = P.x;
+  const pz = P.z;
+  AM_CNT.fill(0);
+  AM_CEN.fill(0);
+  let tous = 0;
+  let vus = 0;
+  // tous les robots vivants, sans requête de grille : aucun flottant passé en argument (la position du héros changerait
+  // à chaque image le registre ARG, donc un nombre emballé par image) ; ≈ E.count tours de calcul simple
+  const nE = E.count;
+  for (let i = 0; i < nE; i++) {
+    if (E.alive[i] === 0) continue;
+    const dx = E.x[i] - px;
+    const dz = E.z[i] - pz;
+    const dd = dx * dx + dz * dz;
+    if (dd > d2max) continue; // centre au-delà du bout : pas compté (le contrôle exact le prendra s'il est touché)
+    const d = Math.sqrt(dd);
+    const rr = half + E.radius[i];
+    vus++;
+    if (d <= rr) {
+      tous++; // il touche le héros : la ligne le tranche quelle que soit sa direction
+      continue;
+    }
+    const w = Math.asin(rr / d);
+    const a = Math.atan2(dz, dx) + Math.PI;
+    let b0 = Math.ceil((a - w) / AM_PAS - 0.5);
+    const b1 = Math.floor((a + w) / AM_PAS - 0.5);
+    for (; b0 <= b1; b0++) {
+      const k = ((b0 % AM_N) + AM_N) % AM_N;
+      AM_CNT[k]++;
+      AM_CEN[k] += 1 - Math.abs((b0 + 0.5) * AM_PAS - a) / w; // la direction qui passe au plus près des centres
+    }
+  }
+  if (vus === 0) return 0;
+  // avant du héros : visée (Caméra libre), sinon marche, sinon son cap
+  AM_D[2] = P.moveX;
+  AM_D[3] = P.moveZ;
+  if (VISEE[2] === 1) {
+    AM_D[2] = VISEE[0];
+    AM_D[3] = VISEE[1];
+  }
+  if (!(AM_D[2] * AM_D[2] + AM_D[3] * AM_D[3] > 1e-6)) {
+    AM_D[2] = Math.sin(P.rot);
+    AM_D[3] = Math.cos(P.rot);
+  }
+  // plus grand compte ; à égalité, la mieux centrée sur ses robots ; puis la plus proche de l'avant du héros
+  let best = 0;
+  let bestDot = AM_CX[0] * AM_D[2] + AM_SZ[0] * AM_D[3];
+  for (let b = 1; b < AM_N; b++) {
+    const c = AM_CNT[b];
+    const dot = AM_CX[b] * AM_D[2] + AM_SZ[b] * AM_D[3];
+    const cb = AM_CNT[best];
+    if (c > cb || (c === cb && (AM_CEN[b] > AM_CEN[best] + 1e-9 || (Math.abs(AM_CEN[b] - AM_CEN[best]) <= 1e-9 && dot > bestDot)))) {
+      best = b;
+      bestDot = dot;
+    }
+  }
+  AM_D[0] = AM_CX[best];
+  AM_D[1] = AM_SZ[best];
+  FRAPPE_AM[3] = best;
+  return AM_CNT[best] + tous;
+}
+
 function fireFlash() {
   if (flPending > 0) return false;
   const w = FLASH;
@@ -593,47 +721,45 @@ function fireFlash() {
   const o = w * STAT_COUNT;
   const dist = effective[o + STAT.AREA];
   const half = effective[o + STAT.SPECIAL];
-  // Retour de Femz du 16/11/2026 (point 3) : « frappe eclair … ca devrais etre activable par une touche reglable (de
-  // base touche A ou E), psk j'ai pris bcq trop de degats qui me faisait foncé auto dans des gros tat d'ennemis » — elle
-  // ne part PLUS toute seule : seulement sur la touche (P.strikeReq, player.js), dans la direction de marche, même sans
-  // robot sur la ligne (le joueur décide). La recharge (cadence de l'arme, fireAcc) reste prête tant qu'il n'appuie pas.
-  if (!(P.strikeReq > 0)) return false;
-  let dx = P.moveX;
-  let dz = P.moveZ;
-  //#region e5:U-visee-souris
-  // § E5.U.3 : la frappe part vers le curseur (VISEE = direction de marche tant qu'il n'a jamais bougé)
-  // § E5.AB.13 : VISEE n'est tenue qu'en Caméra libre (VISEE[2] = 1) ; en Vue fixe, la direction de marche (ci-dessus)
-  if (VISEE[2] === 1) {
-    dx = VISEE[0];
-    dz = VISEE[1];
+  const min = W.minTargets > 0 ? W.minTargets : 1;
+  if (choisirLigne() < min) {
+    FRAPPE_AM[1]++;
+    return false; // aucune ligne assez garnie : elle reste prête, rien ne part dans le vide
   }
-  //#endregion e5:U-visee-souris
-  const l = Math.sqrt(dx * dx + dz * dz);
-  if (!(l > 1e-6)) return false;
-  dx /= l;
-  dz /= l;
-  P.strikeReq = 0;
-  // le héros file au bout de la ligne (jamais dans un obstacle ni hors de l'arène)
+  // bout de la ligne : jamais dans un obstacle ni hors de l'arène (comme le héros d'avant : même résolution « sol ») ;
+  // tableaux typés, aucun flottant passé en argument
+  AM_RX[0] = P.x + AM_D[0] * dist;
+  AM_RZ[0] = P.z + AM_D[1] * dist;
+  AM_RR[0] = W.radius;
+  world.resolveMany(AM_RX, AM_RZ, AM_RR, AM_RM, 1);
   FL[0] = P.x;
   FL[1] = P.z;
-  world.resolve(P.x + dx * dist, P.z + dz * dist, W.radius, resolved);
-  FL[2] = resolved[0];
-  FL[3] = resolved[1];
+  FL[2] = AM_RX[0];
+  FL[3] = AM_RZ[0];
   FL[4] = half;
-  P.x = resolved[0];
-  P.z = resolved[1];
-  if (P.invulnT < W.invuln) P.invulnT = W.invuln;
+  const vivants = compterLigne(); // contrôle exact : le test de grid.querySegment (distance au segment ≤ demi-largeur + rayon)
+  if (vivants < min) {
+    FRAPPE_AM[1]++;
+    return false;
+  }
   LASTV[2] = Math.sqrt((FL[2] - FL[0]) * (FL[2] - FL[0]) + (FL[3] - FL[1]) * (FL[3] - FL[1]));
   flPending = Math.round(effective[o + STAT.COUNT]);
   N_SHOTS[w - KATANA]++;
+  FRAPPE_AM[0]++;
+  FRAPPE_AM[2] = vivants;
   countShot(w);
+  // l'ombre part du héros vers le bout de la ligne
+  OMBRE[0] = FL[0];
+  OMBRE[1] = FL[1];
+  OMBRE[2] = FL[2];
+  OMBRE[3] = FL[3];
+  ombre.lancer();
   slashLine();
-  // § E3.M : arrivée de la frappe — geste (lame tendue derrière lui), arrêt sur image et secousse au contact
-  CB.D[0] = dx;
-  CB.D[1] = dz;
-  if (CB.requestF(COMBO.FLASH) === 1) CB.juiceF(COMBO.FLASH, LASTV[7]);
+  // au contact : arrêt sur image et secousse de la frappe (mêmes valeurs qu'avant ; plus de geste du héros, il ne bouge pas)
+  CB.juiceF(COMBO.FLASH, LASTV[7]);
   return true;
 }
+//#endregion e5:AM-frappe-ombre
 
 // ----- marteau -------------------------------------------------------------------------------------------------------
 function waveHammer() {
@@ -660,7 +786,7 @@ function waveHammer() {
     ARGF[F_V] = dmg;
     ARGF[F_SX] = HAM[0];
     ARGF[F_SZ] = HAM[1];
-    if (strikeF(i, w, 0, 0) <= 0) continue;
+    if (strikeF(i, w, 0, 0, flagsOf[w]) <= 0) continue;
     hits++;
     knockOut(i, HAM[0], HAM[1], kb);
     if (E.alive[i] === 1) {
@@ -760,7 +886,7 @@ function swingHammer() {
     ARGF[F_V] = HG[1] * M.mulDiag;
     ARGF[F_SX] = P.x;
     ARGF[F_SZ] = P.z;
-    if (strikeF(i, w, 0, 0) <= 0) continue;
+    if (strikeF(i, w, 0, 0, flagsOf[w] & SANS_ZONE) <= 0) continue;
     hits++;
     knockOut(i, P.x, P.z, M.recul);
   }
@@ -1215,7 +1341,8 @@ export function reset() {
   N_HITS.fill(0);
   N_CRIT_FORCED[0] = 0;
   LASTV.fill(0);
-  sonsFrappeReset(); // § E5.AD
+  FRAPPE_AM.fill(0); // § E5.AM
+  ombre.reset();
 }
 
 /** L'arme w est retirée (debug) : ses objets quittent le jeu. */
@@ -1329,23 +1456,17 @@ export function update(dt) {
   }
   if (smokeCount > 0 || owned[SMOKE] === 1) updateSmokes(dt);
   if (CN[2] > 0 || CN[4] > 0 || owned[CANNON] === 1) updateCannon(dt);
-  sonsFrappe(); // § E5.AD : Frappe éclair prête, touche pressée pendant la recharge
+  ombre.avancer(dt); // § E5.AM : l'ombre de la frappe avance au temps simulé
 }
 
 /** Dessin : grenades et obus dans le lot TIRS, nuages dans CONTINUS (à la suite de weapons.js), canon instancié. */
 export function sync() {
   //#region e5:U-visee-souris
-  // § E5.U.5 : trait d'annonce de la Frappe éclair PRÊTE (cadence pleine, aucun écho en cours, pas de coup de pied)
-  // variante 'b' (la bande se charge) : visible aussi pendant la recharge, remplie au rythme de fireAcc
-  if (owned[FLASH] === 1 && P.alive && flPending === 0 && fireAccW !== null && (fireAccW[FLASH] >= 1 || visee.traitEnRecharge() === 1) && (usableW === null || usableW[FLASH] === 1) && !armesCoupees()) {
-    TRAIT_FRAPPE[0] = 1;
-    TRAIT_FRAPPE[4] = fireAccW[FLASH];
-    TRAIT_FRAPPE[1] = effective[FLASH * STAT_COUNT + STAT.AREA];
-    TRAIT_FRAPPE[2] = effective[FLASH * STAT_COUNT + STAT.SPECIAL];
-    TRAIT_FRAPPE[3] = WEAPONS[FLASH].radius;
-  }
-  visee.sync();
+  // § E5.AM : plus de trait d'annonce de la Frappe éclair (elle part seule, là où elle tranche le plus) : visee.sync, qui
+  // ne pose que cette plaque, n'est plus appelée (la plaque reste éteinte, 0 appel de dessin). Appelée à vide, cette
+  // fonction courte restait hors du compilateur optimisant et emballait un flottant par image (mesuré : 27,5 o/image).
   //#endregion e5:U-visee-souris
+  ombre.sync(); // § E5.AM : après player.sync (héros posé de l'image)
   const a = V.tampon(V.LOT.TIRS);
   const cap = V.capacite(V.LOT.TIRS);
   let n = V.compte[V.LOT.TIRS];
@@ -1464,58 +1585,13 @@ function evoBarrel(mx, mz, tx, tz) {
 }
 
 //#region e5:AD-sons-existants
-// § E5.AD (ARCHITECTURE.md) : sons EXISTANTS branchés sur deux moments muets de la Frappe éclair.
-//   • prête : CD_READY quand la recharge se termine (cadence pleine, aucun écho en cours) — une fois par recharge ; rien
-//     à l'acquisition ni au départ de la partie (FS[FS_PRET] = 1 tant que l'arme n'est pas possédée) ;
-//   • touche pressée pendant la recharge (front montant de P.strikeReq) que la mémoire de l'appui
-//     (STRIKE_KEYS.bufferSeconds) ne couvrira pas : BUY_DENIED au gain × SONS_EXISTANTS.refusFrappe.gain, au plus un
-//     toutes les SONS_EXISTANTS.refusFrappe.ecart s (en plus du minInterval du son).
-// Tableaux typés, aucun flottant en argument hors constantes de module, rien d'alloué (§ V).
-import { SFX as SFX_AD, SONS_EXISTANTS, STRIKE_KEYS } from './config.js';
-const FS = new Float64Array(3);
-const FS_PRET = 0; // 1 : prête à l'image précédente (ou arme non possédée)
-const FS_REQ = 1; // P.strikeReq à l'image précédente
-const FS_REFUS = 2; // horloge du dernier refus joué (S[S_CLOCK])
-const REFUS_GAIN = SONS_EXISTANTS.refusFrappe.gain;
-const REFUS_ECART = SONS_EXISTANTS.refusFrappe.ecart;
-const MEMOIRE_APPUI = STRIKE_KEYS.bufferSeconds;
-/** Compteurs (tests) : [annonces « prête », refus joués]. */
+// § E5.AD : les deux sons de la Frappe éclair (« prête », refus de la touche) sont retirés par le § E5.AM : elle part
+// seule (aucune action attendue du joueur), sans touche. Compteurs gardés à 0 pour les relevés.
+/** Compteurs (tests) : [annonces « prête », refus joués] — toujours 0 depuis le § E5.AM. */
 export const SONS_FRAPPE = new Int32Array(2);
-
-function sonsFrappeReset() {
-  FS[FS_PRET] = 1;
-  FS[FS_REQ] = 0;
-  FS[FS_REFUS] = -1e9;
-  SONS_FRAPPE.fill(0);
-}
-
-function sonsFrappe() {
-  const req = P.strikeReq;
-  if (owned[FLASH] === 1 && fireAccW !== null) {
-    const acc = fireAccW[FLASH];
-    const pret = flPending === 0 && acc >= 1 ? 1 : 0;
-    if (pret === 1 && FS[FS_PRET] === 0) {
-      audio.play(SFX_AD.CD_READY);
-      SONS_FRAPPE[0]++;
-    } else if (pret === 0 && req > FS[FS_REQ] && acc + effective[FLASH * STAT_COUNT + STAT.RATE] * MEMOIRE_APPUI < 1) {
-      REFUS_X6[0]++; // § E5.X6 (D1) : chaque appui refusé fait trembler la case (ui.js), même quand le son est retenu
-      if (S[S_CLOCK] - FS[FS_REFUS] >= REFUS_ECART) {
-        FS[FS_REFUS] = S[S_CLOCK];
-        audio.playGain(SFX_AD.BUY_DENIED, REFUS_GAIN);
-        SONS_FRAPPE[1]++;
-      }
-    }
-    FS[FS_PRET] = pret;
-  } else {
-    FS[FS_PRET] = 1;
-    if (req > FS[FS_REQ] && P.alive) REFUS_X6[2]++; // § E5.X6 (D6) : touche de frappe sans la Frappe éclair (bulle, consignes.js)
-  }
-  FS[FS_REQ] = req;
-}
 
 // § E5.X6 (D1) : cran de la jauge horloge de la Frappe éclair sur sa case du HUD (ui.js, paintCd) — 0 pendant les échos,
 // ⌊cadence accumulée × steps⌋ pendant la recharge, steps quand elle est prête. Rend un entier (§ V) ; −1 : pas possédée.
-import { REFUS_X6 } from './state.js';
 export function frappeCran(steps) {
   if (owned[FLASH] !== 1 || fireAccW === null) return -1;
   if (flPending > 0) return 0;

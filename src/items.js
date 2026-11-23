@@ -30,6 +30,10 @@ import { SYNERGIE_OBJET, ligneEvoObjet } from './config.js'; // § E5.X7 (H2, H1
 import { BONUS, PROGRESSION } from './config.js'; // § E5.X9 (H1) : Puissance s'applique aussi aux objets
 //#endregion e5:X9-katana-puissance
 
+//#region e5:AH-virus-gaz
+import { CONFORT_FLASHS, VIRUS_GAZ } from './config.js'; // § E5.AH : gaz des robots infectés, son d'infection
+//#endregion e5:AH-virus-gaz
+
 let ctx = null;
 let damage = null;
 let enemies = null;
@@ -55,6 +59,17 @@ const Q = V.Q;
 const F_PROC = DMG.PROC | DMG.NO_CRIT | DMG.NO_IMPACT; // respecte le bouclier du blindé (drone, éclats)
 const F_AREA = F_PROC | DMG.BYPASS_SHIELD; // éclair, explosion, ondes, dash, statuts
 const F_QUIET = F_AREA | DMG.NO_NUMBER; // tic d'un statut au-delà du plafond de chiffres
+//#region e5:AJ-equilibrage-aoe
+// § E5.AJ : coups de ZONE des objets (explosion critique, onde de la coque, impulsion du condensateur, onde du bond) —
+// boss, blindés et élites n'en prennent que 20 % (damage.hitEnemyF). Éclair, éclats, drones, dash, statuts : pas de zone.
+// Overclock : exemplaires plafonnés (itemMaxStacks), sa part de cadence publiée pour weapons (armes de zone sans elle).
+import { DMG_ZONE, itemMaxStacks } from './config.js';
+const F_ZONE = F_AREA | DMG_ZONE;
+const MAXS = new Uint16Array(ITEM_COUNT); // exemplaires au plus de chaque objet
+for (let k = 0; k < ITEM_COUNT; k++) MAXS[k] = Math.min(65535, itemMaxStacks(k));
+/** § E5.AJ : [0] = 1 + valeur de l'Overclock (sa part de mods.fireRateMul), lu par weapons.recompute. */
+export const OC_RATE = new Float64Array([1]);
+//#endregion e5:AJ-equilibrage-aoe
 
 // ----- Possession ----------------------------------------------------------------------------------------------------
 /** Piles de chaque objet (index = ITEM.*). Lecture seule pour les autres modules. */
@@ -81,7 +96,6 @@ let killMask = 0;
 
 // ----- Réglages lus une fois (config.js) -------------------------------------------------------------------------------
 const I_TESLA = ITEMS[ITEM.TESLA];
-const I_CRYO = ITEMS[ITEM.CRYO];
 const I_VIRUS = ITEMS[ITEM.VIRUS];
 const I_BURN = ITEMS[ITEM.BURN];
 const I_DET = ITEMS[ITEM.DETONATOR];
@@ -97,8 +111,10 @@ const I_SAVE = ITEMS[ITEM.SAVE];
 // Flottants de réglage : constantes de module (jamais relues d'un objet en combat)
 const TESLA_SHARE = I_TESLA.dmgShare;
 const TESLA_RANGE = I_TESLA.jumpRange;
-const CRYO_F = I_CRYO.factor;
-const CRYO_S = I_CRYO.seconds;
+//#region e5:AL-retrait-cryogel
+const CRYO_F = FUSION_RULES[0].factor; // gel de l'Orage glacé, dans SA règle (Cryogel retiré)
+const CRYO_S = FUSION_RULES[0].seconds;
+//#endregion e5:AL-retrait-cryogel
 const VIRUS_S = I_VIRUS.seconds;
 const BURN_S = I_BURN.seconds;
 const BURN_DPS = I_BURN.dps;
@@ -510,6 +526,7 @@ export function reset() {
   pulses = 0;
   leechPending = 0;
   dotActive = 0;
+  resetGaz(); // § E5.AH
   berserkStep = 0;
   clearShots = 0;
   dashing = 0;
@@ -531,7 +548,7 @@ export function reset() {
  * quand le cran du Berserk change). Écrit dans mods par DIFFÉRENCE : les bonus et l'agent gardent leur part.
  */
 function refresh() {
-  for (let k = 0; k < N; k++) value[k] = itemValue(k, stacks[k]);
+  for (let k = 0; k < N; k++) value[k] = itemValue(k, stacks[k] < MAXS[k] ? stacks[k] : MAXS[k]); // § E5.AJ : effet borné au plafond
   hitMask = (stacks[ITEM.TESLA] > 0 ? H_TESLA : 0) | (stacks[ITEM.CRYO] > 0 ? H_CRYO : 0) | (stacks[ITEM.VIRUS] > 0 ? H_VIRUS : 0) | (stacks[ITEM.BURN] > 0 ? H_BURN : 0) | (stacks[ITEM.DETONATOR] > 0 ? H_DET : 0);
   killMask = (stacks[ITEM.LEECH] > 0 ? K_LEECH : 0) | (stacks[ITEM.CAPACITOR] > 0 ? K_CAP : 0) | (stacks[ITEM.SHRAPNEL] > 0 ? K_SHRAP : 0) | (stacks[ITEM.BURN] > 0 ? K_BURN : 0) | (fused[1] === 1 ? K_MAL : 0);
   capNeed = stacks[ITEM.CAPACITOR] > 0 ? Math.round(value[ITEM.CAPACITOR]) : 0;
@@ -542,7 +559,7 @@ function refresh() {
   mods.luck = value[ITEM.LUCK];
   // Overclock : PV max en moins, jamais sous minMaxHp (la part des bonus et de l'agent est lue par différence)
   const without = mods.maxHpAdd - ST[S_HP];
-  let cut = I_OC.hpPerStack * stacks[ITEM.OVERCLOCK];
+  let cut = I_OC.hpPerStack * (stacks[ITEM.OVERCLOCK] < MAXS[ITEM.OVERCLOCK] ? stacks[ITEM.OVERCLOCK] : MAXS[ITEM.OVERCLOCK]); // § E5.AJ
   const room = PLAYER.maxHp + without - I_OC.minMaxHp;
   if (cut > room) cut = room > 0 ? room : 0;
   if (-cut !== ST[S_HP]) {
@@ -553,6 +570,7 @@ function refresh() {
   let bz = mods.berserk * (berserkStep / 16);
   if (bz > I_BERSERK_MAX) bz = I_BERSERK_MAX;
   const rate = (1 + value[ITEM.OVERCLOCK]) * (1 + bz) * (ST[S_SURGE] > 0 ? SURGE_MUL : 1); // § E3.F : Surrégime
+  OC_RATE[0] = 1 + value[ITEM.OVERCLOCK]; // § E5.AJ (avant markDirty : weapons.recompute la relit)
   if (rate !== ST[S_RATE]) {
     mods.fireRateMul = (mods.fireRateMul / ST[S_RATE]) * rate;
     ST[S_RATE] = rate;
@@ -586,15 +604,15 @@ export function add(id, n) {
   if (id >= N) {
     const f = id - N;
     if (!(f < FUSION_COUNT) || fused[f] === 0) return false;
-    stacks[FUSIONS[f].a] = Math.min(65535, stacks[FUSIONS[f].a] + k);
-    stacks[FUSIONS[f].b] = Math.min(65535, stacks[FUSIONS[f].b] + k);
+    stacks[FUSIONS[f].a] = Math.min(MAXS[FUSIONS[f].a], stacks[FUSIONS[f].a] + k); // § E5.AJ : plafond de chaque ingrédient
+    stacks[FUSIONS[f].b] = Math.min(MAXS[FUSIONS[f].b], stacks[FUSIONS[f].b] + k);
   } else {
     if (id < 0) return false;
     if (stacks[id] === 0 && fused[pairOf(id)] === 0) {
       if (slotCount >= SLOTS) return false;
       slots[slotCount++] = id;
     }
-    stacks[id] = Math.min(65535, stacks[id] + k);
+    stacks[id] = Math.min(MAXS[id], stacks[id] + k); // § E5.AJ : plafond (au-dessus, venu de la console : ramené au plafond)
     vuObjet[id] = 1; // § E4.A
   }
   ST[S_PX] = P.x;
@@ -621,7 +639,7 @@ export function frapperBond(i) {
   ARGF[F_V] = value[ITEM.DASHCORE];
   ARGF[F_SX] = P.x;
   ARGF[F_SZ] = P.z;
-  strike(i, F_AREA);
+  strike(i, F_ZONE); // § E5.AJ : onde d'atterrissage
   if (bondHits++ === 0) {
     count[ITEM.DASHCORE]++;
     ARGF[F_X] = P.x;
@@ -741,6 +759,7 @@ export function rollOffer(rarity, out, rnd = rand, taken = null) {
     if (meta.ITEM_OK[id] === 0) continue; // § E4.A.5 : objet verrouillé (méta), jamais proposé
     if (fused[pairOf(id)] === 1) continue; // un ingrédient fusionné n'est plus proposé seul
     if (stacks[id] === 0 && !free) continue;
+    if (stacks[id] >= MAXS[id]) continue; // § E5.AJ : au plafond (Overclock × 5), plus proposé
     if (taken !== null && indexIn(taken, id)) continue;
     cand[n++] = id;
   }
@@ -778,7 +797,8 @@ export function describe(id, rarity, out) {
     return out;
   }
   const I = ITEMS[id];
-  const gain = lotItemStacks(rarity, I.tier);
+  let gain = lotItemStacks(rarity, I.tier);
+  if (stacks[id] + gain > MAXS[id]) gain = MAXS[id] > stacks[id] ? MAXS[id] - stacks[id] : 1; // § E5.AJ : « ×4 → ×5 »
   out.key = I.key;
   out.name = I.name;
   out.stacks = gain;
@@ -878,6 +898,7 @@ export function onHitF(i, source, crit) {
   if (source >= DMG_SRC.KAMIKAZE && source !== DMG_SRC.DEBUG) return;
   const m = hitMask;
   if ((m & H_VIRUS) !== 0 && IO[ITEM.VIRUS] === 1) {
+    if (E.dotT0[i] <= 0) signalerInfection(i); // § E5.AH : sain → infecté (un coup qui prolonge l'infection ne compte pas)
     E.dot0[i] = value[ITEM.VIRUS];
     E.dotT0[i] = VIRUS_S;
     dotActive = 1;
@@ -1131,7 +1152,7 @@ function boom(q) {
     ARGF[F_V] = dmg * (1 - EDGE * f);
     ARGF[F_SX] = x;
     ARGF[F_SZ] = z;
-    if (strike(i, F_AREA) > 0 && d > 1e-6 && E.alive[i] === 1) {
+    if (strike(i, F_ZONE) > 0 && d > 1e-6 && E.alive[i] === 1) {
       ARGF[F_DX] = dx / d;
       ARGF[F_DZ] = dz / d;
       ARGF[F_V] = DET_KB;
@@ -1173,7 +1194,7 @@ function reactive(q) {
     ARGF[F_V] = dmg;
     ARGF[F_SX] = x;
     ARGF[F_SZ] = z;
-    strike(i, F_AREA);
+    strike(i, F_ZONE); // § E5.AJ
     if (d > 1e-6 && E.alive[i] === 1) {
       ARGF[F_DX] = dx / d;
       ARGF[F_DZ] = dz / d;
@@ -1450,6 +1471,241 @@ function resetEclats() {
   ECM[1] = 1e9;
 }
 //#endregion e5:Y-eclats
+
+//#region e5:AH-virus-gaz
+// § E5.AH : gaz vert des robots infectés (E.dotT0 > 0) et son de l'infection. Pool fixe de bouffées (tableaux typés,
+// retrait par échange) : naissance dans le corps du robot, montée amortie, balancement au sous-pixel, ancre qui suit le
+// robot tant que son emplacement garde le même uid. Dessin : style VIRUS_GAZ.style à la suite du lot TIRS (aucun appel
+// de dessin de plus). Aucun flottant passé en argument, rien d'alloué par image.
+const VG_ON = VIRUS_GAZ.actif ? 1 : 0;
+const VG_CAP = VIRUS_GAZ.cap;
+const VG_STYLE = VIRUS_GAZ.style;
+const VG_TAUX = VIRUS_GAZ.taux;
+const VG_NAISS = VIRUS_GAZ.naissance;
+const VG_VIE = VIRUS_GAZ.vie;
+const VG_VIEVAR = VIRUS_GAZ.vieVar;
+const VG_ECART = VIRUS_GAZ.ecart;
+const VG_MONTEE = VIRUS_GAZ.montee;
+const VG_BAL = VIRUS_GAZ.balance;
+const VG_BALW = VIRUS_GAZ.balanceHz * TAU;
+const VG_SUIVI = VIRUS_GAZ.suivi;
+const VG_TAILLE = VIRUS_GAZ.taille;
+const VG_MARGE = VIRUS_GAZ.marge;
+const VG_SON = VIRUS_GAZ.son && VIRUS_GAZ.son.id >= 0 ? VIRUS_GAZ.son.id : -1;
+// hauteur de naissance par type de robot : vol (hover) + hauteur du corps × depart
+const VG_Y0 = new Float64Array(ENEMIES.types.length);
+for (let t = 0; t < ENEMIES.types.length; t++) VG_Y0[t] = (ENEMIES.types[t].hover || 0) + (ENEMIES.types[t].height || 1) * VIRUS_GAZ.depart;
+const vgAX = new Float64Array(VG_CAP); // ancre (suit le robot)
+const vgAZ = new Float64Array(VG_CAP);
+const vgOX = new Float64Array(VG_CAP); // écart à l'ancre (naissance dans le corps)
+const vgOZ = new Float64Array(VG_CAP);
+const vgY0 = new Float64Array(VG_CAP);
+const vgAge = new Float64Array(VG_CAP);
+const vgVie = new Float64Array(VG_CAP);
+const vgSeed = new Float64Array(VG_CAP); // [0, 1) : contour, balancement
+const vgUid = new Uint32Array(VG_CAP);
+const vgSlot = new Int32Array(VG_CAP); // emplacement du robot dans E ; −1 : ancre arrêtée (mort, emplacement réutilisé)
+let vgN = 0;
+let vgPic = 0;
+let vgNees = 0; // bouffées nées depuis le reset (sert aussi de graine)
+let vgRefus = 0; // naissances refusées : pool plein
+let vgInfections = 0; // robots passés de sain à infecté
+let vgDemandes = 0; // demandes du son d'infection
+let vgDebut = 0; // premier robot examiné à l'émission (tourne : pool plein, personne n'est privé de gaz en permanence)
+const VG_T = new Float64Array(1); // horloge simulée de l'émission (s)
+const VG_R = new Float64Array(4); // tirages de la bouffée en cours
+const VG_ARG = new Float64Array(2); // cases ARGF[F_X], ARGF[F_Z] du coup en cours, gardées puis rendues
+
+function aleaGaz(n) {
+  for (let q = 0; q < 4; q++) {
+    const h = Math.sin((n * 4 + q) * 12.9898 + 78.233) * 43758.5453;
+    VG_R[q] = h - Math.floor(h);
+  }
+}
+
+/** Une bouffée naît dans le corps du robot i (pool plein : refusée, aucune bouffée volée). */
+function naitreGaz(i) {
+  if (vgN >= VG_CAP) {
+    vgRefus++;
+    return;
+  }
+  const k = vgN++;
+  vgNees++;
+  aleaGaz(vgNees);
+  const a = VG_R[0] * TAU;
+  const r = Math.sqrt(VG_R[1]) * E.radius[i] * VG_ECART;
+  vgOX[k] = Math.cos(a) * r;
+  vgOZ[k] = Math.sin(a) * r;
+  vgAX[k] = E.x[i];
+  vgAZ[k] = E.z[i];
+  vgY0[k] = VG_Y0[E.type[i]] + (VG_R[2] - 0.5) * 0.2;
+  vgAge[k] = 0;
+  vgVie[k] = VG_VIE * (1 + VG_VIEVAR * (2 * VG_R[3] - 1));
+  vgSeed[k] = VG_R[2];
+  vgUid[k] = E.uid[i];
+  vgSlot[k] = i;
+  if (vgN > vgPic) vgPic = vgN;
+}
+
+/**
+ * Le robot i passe de sain à infecté (appelé AVANT que E.dotT0[i] soit posé) : bouffées tout de suite, une demande du
+ * son à sa position (cases ARGF du coup en cours gardées et rendues, comme pour le gel). Coup d'arme (onHitF), nuage du
+ * Malware, Nappe virale (evolutions.js).
+ */
+export function signalerInfection(i) {
+  vgInfections++;
+  if (VG_ON === 1) for (let q = 0; q < VG_NAISS; q++) naitreGaz(i);
+  if (VG_SON >= 0 && audio !== null) {
+    VG_ARG[0] = ARGF[F_X];
+    VG_ARG[1] = ARGF[F_Z];
+    ARGF[F_X] = E.x[i];
+    ARGF[F_Z] = E.z[i];
+    audio.playF(VG_SON);
+    vgDemandes++;
+    ARGF[F_X] = VG_ARG[0];
+    ARGF[F_Z] = VG_ARG[1];
+  }
+}
+
+// Table uid → emplacement des robots vivants, refaite à chaque image (adressage ouvert, tampons de génération : rien à
+// vider). La compaction de fin d'image (enemies.flushDead) déplace des robots d'un emplacement à l'autre : la bouffée
+// retrouve SON robot par l'uid, l'ancre ne décroche qu'à sa mort.
+const VG_TAB = 2048; // > 4 × CAPS.enemies (512)
+const VG_MASK = VG_TAB - 1;
+const vgCle = new Uint32Array(VG_TAB);
+const vgVal = new Int32Array(VG_TAB);
+const vgGen = new Uint32Array(VG_TAB);
+let vgG = 0;
+function slotDeUid(uid) {
+  let h = Math.imul(uid, 0x9e3779b1) >>> 21;
+  for (let q = 0; q < VG_TAB; q++) {
+    if (vgGen[h] !== vgG) return -1;
+    if (vgCle[h] === uid) return vgVal[h];
+    h = (h + 1) & VG_MASK;
+  }
+  return -1;
+}
+
+/** update : émission des robots infectés (taux par robot, phase tirée de son uid), puis âge, ancres, retraits. */
+function avancerGaz(dt) {
+  const ALIVE = E.alive;
+  const UID = E.uid;
+  const X = E.x;
+  const Z = E.z;
+  const T0 = E.dotT0;
+  const SUS = E.sus;
+  const n = E.count;
+  const t0 = VG_T[0];
+  const t1 = t0 + dt;
+  VG_T[0] = t1;
+  vgG = (vgG + 1) >>> 0;
+  if (vgG === 0) {
+    vgGen.fill(0);
+    vgG = 1;
+  }
+  if (vgDebut >= n) vgDebut = 0;
+  for (let q = 0; q < n; q++) {
+    let i = q + vgDebut;
+    if (i >= n) i -= n;
+    if (ALIVE[i] === 0) continue;
+    const uid = UID[i];
+    let h = Math.imul(uid, 0x9e3779b1) >>> 21;
+    while (vgGen[h] === vgG) h = (h + 1) & VG_MASK;
+    vgGen[h] = vgG;
+    vgCle[h] = uid;
+    vgVal[h] = i;
+    if (T0[i] <= 0 || SUS[i] === 2) continue;
+    const hp = uid * 0.6180339887;
+    const ph = hp - Math.floor(hp);
+    const c1 = Math.floor(t1 * VG_TAUX + ph);
+    for (let c = Math.floor(t0 * VG_TAUX + ph); c < c1; c++) naitreGaz(i);
+  }
+  vgDebut++;
+  const s = 1 - Math.exp(-VG_SUIVI * dt);
+  for (let k = 0; k < vgN; k++) {
+    const age = vgAge[k] + dt;
+    if (age >= vgVie[k]) {
+      const j = --vgN;
+      if (k !== j) {
+        vgAX[k] = vgAX[j];
+        vgAZ[k] = vgAZ[j];
+        vgOX[k] = vgOX[j];
+        vgOZ[k] = vgOZ[j];
+        vgY0[k] = vgY0[j];
+        vgAge[k] = vgAge[j];
+        vgVie[k] = vgVie[j];
+        vgSeed[k] = vgSeed[j];
+        vgUid[k] = vgUid[j];
+        vgSlot[k] = vgSlot[j];
+      }
+      k--;
+      continue;
+    }
+    vgAge[k] = age;
+    if (vgSlot[k] < 0) continue;
+    const i = slotDeUid(vgUid[k]);
+    if (i < 0) {
+      vgSlot[k] = -1; // le robot est mort : la bouffée finit sur place
+      continue;
+    }
+    vgSlot[k] = i;
+    vgAX[k] += (X[i] - vgAX[k]) * s;
+    vgAZ[k] += (Z[i] - vgAZ[k]) * s;
+  }
+}
+
+/** sync : bouffées à la suite du lot TIRS (après les éclats). f = âge relatif (style non daté) ; graine + 1 = sans cœur. */
+function syncGaz() {
+  if (!P.alive) {
+    vgN = 0; // game over : la simulation est arrêtée, le gaz ne resterait pas figé
+    return;
+  }
+  const a = V.tampon(V.LOT.TIRS);
+  const cap = V.capacite(V.LOT.TIRS);
+  let n = V.compte[V.LOT.TIRS];
+  const sansCoeur = CONFORT_FLASHS.reduits ? 1 : 0;
+  for (let k = 0; k < vgN && n < cap; k++) {
+    let u = vgAge[k] / vgVie[k];
+    if (u > 1) u = 1;
+    const m = 1 - u;
+    const ph = vgSeed[k] * TAU + vgAge[k] * VG_BALW;
+    const bal = VG_BAL * (0.3 + 0.7 * u);
+    const p = n * V.STRIDE;
+    n++;
+    a[p] = vgAX[k] + vgOX[k] + bal * Math.sin(ph);
+    a[p + 1] = vgY0[k] + VG_MONTEE * (1 - m * m);
+    a[p + 2] = vgAZ[k] + vgOZ[k] + bal * 0.5 * Math.cos(ph * 0.7);
+    a[p + 3] = VG_TAILLE * (0.6 + 0.6 * u);
+    a[p + 4] = 0;
+    a[p + 5] = 1;
+    a[p + 6] = 0;
+    a[p + 7] = 0;
+    a[p + 8] = VG_STYLE;
+    a[p + 9] = vgSeed[k] + sansCoeur;
+    a[p + 10] = u;
+    a[p + 11] = VG_MARGE;
+  }
+  V.compte[V.LOT.TIRS] = n;
+}
+
+function resetGaz() {
+  vgN = 0;
+  vgPic = 0;
+  vgNees = 0;
+  vgRefus = 0;
+  vgInfections = 0;
+  vgDemandes = 0;
+  vgDebut = 0;
+  VG_T[0] = 0;
+}
+
+/** Tests : état du gaz (hors combat). */
+function inspectGaz(out) {
+  const bouffees = [];
+  for (let k = 0; k < vgN; k++) bouffees.push({ uid: vgUid[k], suit: vgSlot[k] >= 0, age: vgAge[k], vie: vgVie[k], x: vgAX[k] + vgOX[k], z: vgAZ[k] + vgOZ[k] });
+  out.virusGaz = { enVol: vgN, pic: vgPic, nees: vgNees, refus: vgRefus, infections: vgInfections, demandes: vgDemandes, cap: VG_CAP, bouffees };
+}
+//#endregion e5:AH-virus-gaz
 let shardsDone = 0;
 
 /** Un robot en feu tué par une arme enflamme ses voisins (aucun coup : le statut seul). */
@@ -1547,7 +1803,7 @@ function pulse() {
     ARGF[F_V] = dmg;
     ARGF[F_SX] = px;
     ARGF[F_SZ] = pz;
-    strike(i, F_AREA);
+    strike(i, F_ZONE); // § E5.AJ
   }
   pulses++;
   count[ITEM.CAPACITOR]++;
@@ -1661,7 +1917,7 @@ export function update(dt) {
     lastWave = run.wave;
     saveReady = 1; // la Sauvegarde se réarme à chaque vague
   }
-  if (slotCount === 0 && qN === 0 && dotActive === 0 && hitMask === 0 && killMask === 0 && drones === 0 && stacks[ITEM.DASHCORE] === 0 && clN === 0 && restorePending === 0 && frN === 0) {
+  if (slotCount === 0 && qN === 0 && dotActive === 0 && hitMask === 0 && killMask === 0 && drones === 0 && stacks[ITEM.DASHCORE] === 0 && clN === 0 && restorePending === 0 && frN === 0 && vgN === 0) {
     ST[S_PX] = P.x;
     ST[S_PZ] = P.z;
     ST[S_SHIELD] = 0; // plus aucun objet : rien ne recharge
@@ -1789,6 +2045,7 @@ export function update(dt) {
       dotTick();
     }
   }
+  if (VG_ON === 1 && (dotActive === 1 || vgN > 0)) avancerGaz(dt); // § E5.AH : après le tic (dotT0 de l'image)
   // condensateur : une impulsion par image au plus ; le surplus de morts ne met JAMAIS une seconde impulsion en réserve
   // (400 robots tués d'un coup = une impulsion, pas seize à la suite)
   if (capNeed > 0 && capKills >= capNeed && P.alive && IO[ITEM.CAPACITOR] === 1) { // § E4.G : dans la fenêtre
@@ -1814,6 +2071,7 @@ export function update(dt) {
 /** F11 : instances des drones compagnons (rien d'autre n'a de maillage). */
 export function sync() {
   if (frN > 0) syncEclats(); // § E5.Y : fragments des Éclats, à la suite du lot TIRS
+  if (vgN > 0) syncGaz(); // § E5.AH : bouffées de gaz du Virus, à la suite (après les éclats)
   if (droneMesh === null) return;
   let n = 0;
   if (P.alive && droneReady) {
@@ -1851,7 +2109,7 @@ export function sync() {
 export function debugSet(key, n) {
   const id = typeof key === 'string' ? ITEMS.findIndex((I) => I.key === key) : key;
   if (!(id >= 0 && id < N)) return false;
-  const k = Math.max(0, Math.min(65535, Math.floor(n)));
+  const k = Math.max(0, Math.min(MAXS[id], Math.floor(n))); // § E5.AJ : la console respecte le plafond
   if (k > 0 && stacks[id] === 0 && fused[pairOf(id)] === 0 && slotCount < SLOTS) slots[slotCount++] = id;
   if (k === 0 && stacks[id] > 0) {
     for (let s = 0; s < slotCount; s++) {
@@ -1903,6 +2161,7 @@ export function inspect(out) {
   out.jumps = jumpsDone;
   out.shards = shardsDone;
   inspectEclats(out); // § E5.Y
+  inspectGaz(out); // § E5.AH
   out.spreads = spreadDone;
   out.dotTicks = dotTicks;
   out.pulses = pulses;
@@ -2118,6 +2377,7 @@ function updateFusions(dt) {
       for (let k = 0; k < n; k++) {
         const i = OUT[k];
         if (E.alive[i] === 0) continue;
+        if (E.dotT0[i] <= 0) signalerInfection(i); // § E5.AH
         E.dot0[i] = value[ITEM.VIRUS] > 0 ? value[ITEM.VIRUS] : ITEMS[ITEM.VIRUS].base;
         E.dotT0[i] = VIRUS_S;
         E.dot1[i] = BURN_DPS;

@@ -21,7 +21,7 @@ const KICKER_RESTE = CARRY.kicker.replace(/ : $/, ''); // surtitres tels que sho
 const KICKER_REGROUPES = CARRY.mergeKicker.replace(/ : $/, '');
 import { PALIERS_VAGUES } from './config.js'; // § E5.V : titre « Décryptage », piste du palier
 import { BOSS_IDENTITE, bossNomRang } from './config.js'; // 20/11 : « BOSS » = catégorie, le boss 1 = OVERCLOCK
-import { AGENTS, AGENT_COUNT, AGENT_SCREEN, CHOICES, PLAYER, PORTRAIT, WEAPON_KEYS, agentBarPips, agentSignature } from './config.js'; // § E2.D ; PORTRAIT : planches animées des cartes (18/11)
+import { AGENTS, AGENT_COUNT, AGENT_SCREEN, CHOICES, PLAYER, PORTRAIT, WEAPON_KEYS, agentSignature } from './config.js'; // § E2.D ; PORTRAIT : planche animée de la fiche (18/11)
 import { ELITES } from './config.js'; // § E3.A : gros lot (coffres de 3 ou 5 lots)
 import { FUSIONS, ITEMS, ITEM_COUNT, ITEM_ICONS, ITEM_RULES, itemText, TEXTES_N } from './config.js'; // § E2.F : rangée d'objets du HUD, cartes d'objet, fiche
 import { UTIL, UTILITIES, UTILITY_ICONS } from './config.js'; // § E3.C : rangée des effets à durée
@@ -32,8 +32,10 @@ import { creerFormule, evolutionDeArme, recetteEvolution, recetteFusion } from '
 import { RECHARGE, RECHARGES } from './config.js'; // § E3.H : jauge horloge des sources à recharge ; § E4.G : ligne Action
 import { TOUCHES } from './config.js'; // § E4.D : toutes les touches réglables (bloc « Touches » de la pause)
 import { HUB } from './config.js'; // § E4.B : le hub « Noyau »
+import { VITRINE, skinsDe } from './config.js'; // Écran Agents (tâche 5) : fond peint, cartes précalculées, nombre de skins
 import { SILHOUETTE } from './config.js'; // § E4.L.2 : silhouette pleine des agents verrouillés
 import * as hub from './ui-hub.js'; // § E4.B : construit le hub (comme ui-carte.js pour les composants)
+import * as ficheUI from './ui-agents-fiche.js'; // Écran Agents (tâche 6) : la fiche perso
 import * as bilanUI from './ui-bilan.js'; // § E4.C : bilan par arme et Cycles de l'écran de fin
 import * as notes from './ui-notes.js'; // § E4.I.6 : notes de version de l'écran titre
 import { PATCHNOTES_UI } from './config.js'; // § E4.I.6
@@ -414,12 +416,7 @@ const shopLigneVue = { w: -1, s: -1 }; // ligne survolée à la souris (w = arme
 let shopCompte = null; // « 3 / 6 » au-dessus des cases
 let overNums, overFlag, overBest;
 let overCause = null; // § E5.Q (C2) : { box, detruit, detruitVal, plus, plusVal }
-// § E2.D — écran de choix de l'agent (parallaxe) et barre « Relancer / Passer / Bannir » du choix de niveau
-const agentCards = []; // { card, enter }
-let agentFond = null; // couche 0 : fond de grille
-let agentCartes = null; // couche 1 : les trois cartes
-const agentPortraits = []; // couche 2 : les portraits (décalage relatif aux cartes)
-let agentCurrent = 0;
+// § E2.D — barre « Relancer / Passer / Bannir » du choix de niveau
 let ficheTitre = null; // fiche de la pause : nom et portrait de l'agent de la partie
 let fichePortrait = null;
 // Parallaxe : [0, 1] pointeur visé (−1 … 1), [2, 3] pointeur lissé, [4 … 9] décalages ÉCRITS par couche (px, x puis y)
@@ -862,7 +859,14 @@ function confirmable(label, cls, action) {
   // (aucune minuterie dans ui.js, contrat de l'interface)
   const compte = el('span', 'sr-btn-compte');
   compte.style.setProperty('--duree', REGLAGES.confirmerSecondes + 's');
-  compte.addEventListener('animationend', () => desarmer());
+  //#region e5:AN-quitter-pause
+  // § E5.AN (22/11) : une fin d'animation plus courte que le délai (durée écrasée — « Réduire les animations » ramenait
+  // tout #ui-root à 0,001 s : le bouton se désarmait à l'image qui suit le 1er clic, le 2e clic ré-armait, à l'infini)
+  // ne désarme pas : seule la fin du VRAI décompte le fait (ui-pile.css garde sa durée en mouvement réduit)
+  compte.addEventListener('animationend', (e) => {
+    if (e.elapsedTime >= REGLAGES.confirmerSecondes - 0.05) desarmer();
+  });
+  //#endregion e5:AN-quitter-pause
   b.append(sous, compte);
   const desarmer = () => {
     if (!arme) return;
@@ -924,12 +928,15 @@ function pips(count, parent) {
 }
 
 function paintSlider(s) {
-  s.value.textContent = s.input.value + ' %';
+  s.value.textContent = s.texte ? s.texte(Number(s.input.value)) : s.input.value + ' %'; // § E5.AG : texte propre au curseur
   s.input.style.setProperty('--v', s.input.value + '%');
 }
 
-/** Curseur 0 à 100 %. Geste natif à la souris ; le focus est rendu à la fin du geste (§ Q). */
-function slider(label, onInput) {
+/**
+ * Curseur 0 à 100 %. Geste natif à la souris ; le focus est rendu à la fin du geste (§ Q). texte (§ E5.AG, facultatif) :
+ * position 0..100 → texte affiché (sinon « N % »). Écrit au geste et à l'ouverture, jamais par image.
+ */
+function slider(label, onInput, texte = null) {
   const row = el('div', 'sr-slider');
   const input = el('input');
   input.type = 'range';
@@ -938,7 +945,7 @@ function slider(label, onInput) {
   input.step = '1';
   input.tabIndex = -1;
   input.setAttribute('aria-label', label);
-  const s = { row, input, value: el('span', 'sr-slider-value', '') };
+  const s = { row, input, value: el('span', 'sr-slider-value', ''), texte };
   const release = () => input.blur();
   input.addEventListener('input', () => {
     paintSlider(s);
@@ -1141,6 +1148,20 @@ function paramLigne(parent, nom, aide, ctrl) {
   return a; // § E5.AB.13 : la ligne d'aide (celle du Déplacement suit le choix)
 }
 
+// § E5.AG : curseur « Sensibilité de la souris » — position t (0..100) ↔ multiplicateur m, géométrique sur chaque moitié
+// (t 0 → min, 50 → 1, 100 → max) ; m arrondi au centième : la valeur affichée est la valeur appliquée
+function sensiDePosition(t) {
+  const R = REGLAGES.sensibilite;
+  const m = t <= 50 ? R.min * Math.pow(1 / R.min, t / 50) : Math.pow(R.max, (t - 50) / 50);
+  return Math.round(m * 100) / 100;
+}
+function positionDeSensi(m) {
+  const R = REGLAGES.sensibilite;
+  const t = m <= 1 ? (50 * Math.log(m / R.min)) / Math.log(1 / R.min) : 50 + (50 * Math.log(m)) / Math.log(R.max);
+  return t < 0 ? 0 : t > 100 ? 100 : Math.round(t);
+}
+const texteSensi = (t) => Math.round(sensiDePosition(t) * 100) + ' %';
+
 //#region e5:AB-camera-3p
 // § E5.AB.13 (Femz, 22/11) : l'aide du réglage Déplacement décrit SEULEMENT l'option choisie, mise à jour au clic
 const aidesDeplacement = [];
@@ -1192,7 +1213,11 @@ function buildParam() {
   paramLigne(son, L.volume, A.volume, volume.row);
   paramLigne(son, L.sfx, A.sfx, sfx.row);
   paramLigne(son, L.musique, A.musique, musique.row);
-  sliders.push({ graph, secousses, flashs, deplacement, volume, sfx, musique });
+  // § E5.AG : Commandes commence par la sensibilité de la souris (là où un joueur la cherche ; Général est plein sans défiler)
+  const sensi = slider(L.sensibilite, (t) => actions.setSensibilite(sensiDePosition(Math.round(t * 100))), texteSensi);
+  sensi.row.classList.add('sr-slider-sensi');
+  paramLigne(cmd, L.sensibilite, A.sensibilite, sensi.row);
+  sliders.push({ graph, secousses, flashs, deplacement, volume, sfx, musique, sensi });
   // Commandes : le bloc des touches de la pause (§ E4.D), déplacé ici (une seule instance, ses écouteurs suivent)
   const touches = plis.find((x) => x.box.classList.contains('sr-pli-touches'));
   if (touches) {
@@ -1355,6 +1380,10 @@ function setSliders(data) {
       s.musique.input.value = String(Math.round(data.musique * 100));
       paintSlider(s.musique);
     }
+    if (typeof data.sensibilite === 'number' && s.sensi) {
+      s.sensi.input.value = String(positionDeSensi(data.sensibilite)); // § E5.AG
+      paintSlider(s.sensi);
+    }
   }
 }
 
@@ -1469,7 +1498,7 @@ export function init(context) {
   buildShop();
   buildGameOver();
   buildChest(); // § E2.C
-  buildAgent(); // § E2.D
+  buildAgents(); // Écran Agents (tâche 5)
   buildFusion(); // § E3.F
   buildHub(); // § E4.B
   buildParam(); // § E5.R : fenêtre Paramètres (après la pause : elle accueille son bloc des touches)
@@ -1646,7 +1675,12 @@ function buildHud() {
 
   // Retour de Femz du 16/11/2026 (point 5) : « retire "dash" barre dans l'ui, on a deja le cercle bleu sur le perso » —
   // la barre est construite hors du document (la recharge se lit sur le repère R1 au sol, anim/reperes.js).
-  bottom.append(weaponBox, itemBox, hpRow);
+  //#region e5:AI-barre-vie
+  // § E5.AI (Femz, 22/11 : « plus besoin de l'UI barre de vie en bas de l'écran ») : les PV se lisent sur la barre
+  // au-dessus de l'agent (src/barres-vie.js). hpRow est construit hors du document, comme la barre du dash (16/11) :
+  // ses écritures dans update restent locales et sans effet. Elle était posée en absolu : rien d'autre ne bouge.
+  bottom.append(weaponBox, itemBox);
+  //#endregion e5:AI-barre-vie
   hud.appendChild(bottom);
   hudX7(weaponBox, itemBox, frag); // § E5.X7 (A13 / F6) : libellés courts et bulles au survol
 
@@ -2131,11 +2165,14 @@ function buildPause() {
   const col = el('div', 'sr-btn-col');
   col.append(button('Reprendre', 'sr-btn sr-primary', click(() => actions.resume())));
   if (CARTE) col.append(button('Inventaire', 'sr-btn sr-pause-vers-fiche', click(() => setMenuOpen(false)))); // la fiche de l'agent (Femz, 19/11 : « Inventaire »)
-  col.append(confirmable('Recommencer', 'sr-btn', () => actions.restart())); // § E5.S (A6) : deux clics
+  const recommencer = confirmable('Recommencer', 'sr-btn sr-pause-recommencer', () => actions.restart()); // § E5.S (A6) : deux clics
+  if (!CARTE) col.append(recommencer); // thème désert : place d'avant
   panel.append(col, el('div', 'sr-rule'));
-  // § E3.I (img1) : réglages et touches repliés derrière deux boutons (bloc e3:I-pause en fin de fichier)
-  buildPlis(panel, () => {}, keysBlock); // § E5.R : « Paramètres » et « Touches » ouvrent la fenêtre Paramètres
+  // § E3.I (img1) : réglages et touches repliés derrière deux boutons (bloc e3:I-pause en fin de fichier) ; § E5.AG (Femz,
+  // 22/11) : en carte mère, plus de bouton « Touches » — le bloc est dans l'onglet Commandes de la fenêtre Paramètres
+  buildPlis(panel, () => {}, keysBlock); // § E5.R : « Paramètres » ouvre la fenêtre Paramètres
   const fin = el('div', 'sr-btn-col sr-pause-fin');
+  if (CARTE) fin.append(recommencer); // § E5.AG : en bas, juste au-dessus de « Quitter la partie »
   fin.append(confirmable('Quitter la partie', 'sr-btn sr-pause-quitter', () => actions.quitToTitle())); // § E5.S (A6)
   panel.appendChild(fin);
   pause.appendChild(panel);
@@ -2400,8 +2437,12 @@ function buildGameOver() {
   const plusVal = el('span', 'sr-over-cause-val', '');
   const plusPct = el('span', 'sr-over-cause-pct sr-num', '');
   plus.append(el('span', 'sr-over-cause-lab', RETOURS_GUIDE.textes.plus), plusVal, plusPct);
-  causeBox.append(detruit, plus);
-  overCause = { box: causeBox, detruit, detruitVal, plus, plusVal, plusPct };
+  //#region e5:AK-mort-claire
+  // § E5.AK : sous « Détruit par », une phrase — ce qui s'est passé, comment l'éviter (classe à part : pas une « ligne »)
+  const conseil = el('p', 'sr-over-cause-conseil', '');
+  //#endregion e5:AK-mort-claire
+  causeBox.append(detruit, conseil, plus);
+  overCause = { box: causeBox, detruit, detruitVal, plus, plusVal, plusPct, conseil };
   //#endregion e5:Q-retours-guide
   const cells = el('div', 'sr-cells');
   overNums = [cell('vague atteinte', cells), cell('robots détruits', cells), cell('niveau', cells), cell('temps', cells)];
@@ -2419,136 +2460,312 @@ function buildGameOver() {
   addScreen(SCREEN.GAMEOVER, over);
 }
 
-// ----- § E2.D : écran de choix de l'agent (DA FUI, chemin « SYSTÈME / AGENT ») ---------------------------------------
+// ----- Écran Agents (tâche 5, maquette docs/maquettes-ecran-agents/grille-B2.png) : grille des agents, fiche (tâche 6) ---
+// Pleine page sur le fond peint (VITRINE.fonds.grille) : la scène derrière n'est pas rendue (main.js, F14). Une carte par
+// agent = image précalculée (VITRINE.cartes : l'agent dans son skin CHOISI, ou sa silhouette s'il est verrouillé) ; rôle,
+// nom, arme de départ, « N skins » à partir de 2 ; verrouillé : cadenas, condition et progression du succès qui le
+// débloque. Un seul élément jaune : le focus (carte visée, vignette de skin, ou « Retour » / « Jouer »). « Jouer · <agent> »
+// en blanc. Aucune touche affichée. Flèches, Entrée, Échap (= Retour) : main.js → agentsBouger / agentsConfirmer /
+// actions.agentRetour. La vue FICHE (tâche 6) est construite et remplie par src/ui-agents-fiche.js ; le focus, le pied et
+// les touches restent ici. Ouvert depuis le titre, le focus est sur « Jouer · <dernier agent> » (Entrée, Entrée relance).
 
-/** Valeur affichée au bout d'une barre de la fiche : PV, vitesse en %, dégâts reçus en %, recharge du dash en s. */
-function agentBarText(a, bar) {
-  const S = AGENTS[a].stats;
-  const stat = AGENT_SCREEN.bars[bar].stat;
-  if (stat === 'maxHp') return String(S.maxHp);
-  if (stat === 'speedMul') return Math.round(S.speedMul * 100) + ' %';
-  if (stat === 'damageTakenMul') return S.damageTakenMul < 1 ? '\u2212' + Math.round((1 - S.damageTakenMul) * 100) + ' %' : '\u2014';
-  return formatValue(PLAYER.dash.cooldown * S.dashCdMul) + ' s';
+const AE_RETOUR = AGENT_COUNT; // focus : 0 … AGENT_COUNT − 1 = une carte, puis « Retour », « Jouer », puis les vignettes
+const AE_JOUER = AGENT_COUNT + 1;
+const AE_SKIN = AGENT_COUNT + 2; // AE_SKIN + k : vignette du skin k de la fiche
+const AE = { vue: 'grille', origine: 'titre', focus: 0, vise: 0, verrouFiche: false }; // vise : la carte visée (agent de « Jouer » en grille)
+let aeData = null; // dernière vue de main.js (agentView)
+let aeFond = null; // couche 0 de la parallaxe : le fond peint
+let aeRangee = null; // couche 1 : la rangée des cartes
+const aeImgs = []; // couche 2 : les images des cartes
+const aeCartes = []; // { card, img, cadenas, role, nom, cond, prog, skins, arme, verrou }
+const aePrechargees = []; // images décodées au démarrage (gardées : le navigateur garde leur décodage)
+// pointeur à l'ouverture : [x, y] (input.curseurT), [2] = 1 dès qu'il a vraiment bougé (ou s'il n'a jamais bougé sur la page)
+const AE_POS = new Float64Array([-1, -1, 0]);
+// survol d'une carte : candidate (agent, -1 = aucune), horodatage du dernier mouvement dessus, minuterie en attente (0 = aucune)
+const AE_SURVOL = { carte: -1, t: 0, minuterie: 0 };
+let aeTete = null;
+let aeGrille = null;
+let aeFiche = null; // vue fiche (src/ui-agents-fiche.js)
+let aeRetour = null;
+let aeJouer = null;
+let aeJouerLabel = null;
+
+function aeVerrou(a) {
+  return !!ctx.meta && ctx.meta.agentVerrouille(a);
 }
 
-/**
- * § E4.B.3 : une carte d'agent (portrait pixel teinté, nom, rôle, arme signature au filet rouge « Root », passif,
- * quatre barres), commune à l'écran des agents et à l'onglet Agents du hub. Un agent verrouillé (paintAgentCard) :
- * portrait assombri, cadenas, nom lisible, et à la place du passif la condition de déblocage et sa progression.
- * Rend { card, enter, img, passif, cond, condTxt, condProg, tag }.
- */
-function agentCard(a, onClick) {
-  const A = AGENTS[a];
-  // classe à part (pas « sr-card » : les cartes de bonus gardent leur sélecteur pour elles), même habillage en CSS
-  const card = pressable(el('button', 'sr-acard sr-facet'), onClick);
-  card.style.setProperty('--ac', hex(A.accent));
-  const haut = el('div', 'sr-acard-haut');
-  const portrait = el('div', 'sr-acard-portrait');
-  // 18/11 (« A en animé ») : fig = couche de parallaxe ; img = vignette 48 × 68 au Noyau, planche animée de l'idle
-  // (PORTRAIT, CSS steps) sur l'écran des agents, silhouette pleine si verrouillé
-  const fig = el('div', 'sr-acard-fig');
-  const img = el('img');
-  img.src = AGENT_SCREEN.portraits[a];
-  img.alt = '';
-  img.draggable = false;
-  const B = PORTRAIT.boucles[a];
-  img.style.setProperty('--n', String(B.images));
-  img.style.setProperty('--dur', B.dureeS + 's');
-  img.style.setProperty('--dir', B.allerRetour ? 'alternate' : 'normal');
-  fig.appendChild(img);
-  portrait.append(fig, el('span', 'sr-acard-cadenas'));
-  const ident = el('div', 'sr-acard-ident');
-  const touches = el('div', 'sr-acard-touches');
-  const enter = indice(el('span', 'sr-key', ''), 'valider'); // § E4.D
-  touches.append(indice(el('span', 'sr-key', ''), 'choix' + (a + 1)), enter);
-  const tag = el('div', 'sr-acard-tag', '');
-  ident.append(touches, el('div', 'sr-card-name', A.name), el('div', 'sr-acard-role', A.role), el('div', 'sr-card-desc', A.lines[0]), tag);
-  haut.append(portrait, ident);
-  // arme signature : l'arme du jeu si sa clé existe, sinon le nom du contrat (arme d'un chantier pas encore fusionné)
-  const w = WEAPON_KEYS.indexOf(A.signatureKey);
-  const sig = el('div', 'sr-acard-sig');
-  const rootTag = el('span', 'sr-acard-root', AGENT_SCREEN.rootTag);
-  if (AGENT_SCREEN.rootBulle) rootTag.title = AGENT_SCREEN.rootBulle; // § E5.L (A10)
-  sig.append(icon(w >= 0 ? 'sr-w' + w : 'sr-b-default'), el('span', 'sr-acard-sig-nom', w >= 0 ? WEAPONS[w].name : A.signatureName), rootTag);
-  if (AGENT_SCREEN.rootSous) sig.append(el('span', 'sr-acard-root-sous', AGENT_SCREEN.rootSous)); // § E5.L (A10) : « ROOT » expliqué
-  const passif = el('div', 'sr-acard-passif');
-  passif.append(el('div', 'sr-acard-passif-nom', A.passive.name), el('div', 'sr-card-desc', A.passive.desc));
-  // § E4.B.3 : condition de déblocage (affichée à la place du passif quand l'agent est verrouillé)
-  const cond = el('div', 'sr-acard-passif sr-acard-cond');
-  const condTxt = el('div', 'sr-card-desc sr-acard-cond-txt', '');
-  const condProg = el('div', 'sr-num sr-acard-cond-prog', '');
-  cond.append(el('div', 'sr-acard-passif-nom', HUB.textes.verrou), condTxt, condProg);
-  cond.style.display = 'none';
-  const barres = el('div', 'sr-acard-barres');
-  for (let b = 0; b < AGENT_SCREEN.bars.length; b++) {
-    const row = el('div', 'sr-acard-barre');
-    row.appendChild(el('span', 'sr-acard-barre-nom', AGENT_SCREEN.bars[b].label));
-    const list = pips(AGENT_SCREEN.pips, row);
-    const n = agentBarPips(a, b);
-    for (let k = 0; k < list.length; k++) if (k < n) list[k].className = 'sr-pip sr-on';
-    row.appendChild(el('span', 'sr-num sr-acard-barre-val', agentBarText(a, b)));
-    barres.appendChild(row);
-  }
-  card.append(haut, sig, passif, cond, barres);
-  return { card, enter, img, fig, passif, cond, condTxt, condProg, tag };
+/** Agent de « Jouer » : la carte visée (grille) ou l'agent de la fiche. */
+function aeAgentJouer() {
+  return AE.vue === 'fiche' && aeData ? aeData.agent : AE.vise;
 }
 
-/** État d'une carte d'agent : verrouillée (avec sa condition), courante (agent de départ). Rend la classe posée. */
-function paintAgentCard(c, a, locked, current, condition, hubTag) {
-  const cls = 'sr-acard sr-facet' + (locked ? ' sr-verrou' : '') + (current ? ' sr-courant' : '');
-  if (c.card.className !== cls) c.card.className = cls;
-  if (hubTag) appliquerSil(c.img, a, locked); // § E4.L.2 : un agent verrouillé n'est qu'une silhouette pleine
-  else portraitAnime(c.img, a, locked); // 18/11 : écran des agents — planche animée, ou grande silhouette
-  c.enter.style.display = current && !locked ? '' : 'none';
-  c.passif.style.display = locked ? 'none' : '';
-  c.cond.style.display = locked ? '' : 'none';
-  if (locked && condition) {
-    setText(c.condTxt, condition.texte);
-    setText(c.condProg, condition.prog);
-  }
-  // menus « Pile » (19/11, Femz : « agent de départ, pas besoin de le préciser ») : plus d'étiquette sur la carte
-  const tag = '';
-  setText(c.tag, tag);
-  c.tag.style.display = tag ? '' : 'none';
-  c.card.setAttribute('aria-disabled', locked ? 'true' : 'false');
-  return cls;
-}
-
-/**
- * Trois cartes (agentCard). Trois couches pour la parallaxe : fond de grille, cartes, portraits (AGENT_SCREEN.parallax).
- * Un clic sur une carte, ou 1 / 2 / 3, lance la partie avec cet agent ; Entrée garde l'agent courant ; Échap revient au
- * titre (main.js). Une carte verrouillée (§ E4.B.3) refuse (son de refus joué par main.chooseAgent), rien ne démarre.
- */
-function buildAgent() {
-  const scr = el('div', 'sr-screen sr-agent');
-  agentFond = el('div', 'sr-agent-fond');
-  scr.appendChild(agentFond);
-  const head = el('div', 'sr-agent-head');
-  head.append(el('h2', null, AGENT_SCREEN.title), el('p', 'sr-lead', AGENT_SCREEN.lead));
-  scr.appendChild(head);
-  agentCartes = el('div', 'sr-agents');
+function buildAgents() {
+  const T = AGENT_SCREEN.textes;
+  const scr = el('div', 'sr-screen sr-agents-ecran');
+  aeFond = el('div', 'sr-ae-fond');
+  aeFond.style.backgroundImage = "url('" + VITRINE.fonds.grille + "')";
+  scr.appendChild(aeFond);
+  aeTete = el('div', 'sr-ae-tete');
+  aeTete.append(el('h2', null, AGENT_SCREEN.title), el('p', 'sr-lead', AGENT_SCREEN.lead));
+  scr.appendChild(aeTete);
+  aeGrille = el('div', 'sr-ae-grille');
+  aeRangee = el('div', 'sr-ae-cartes');
   for (let a = 0; a < AGENT_COUNT; a++) {
-    const c = agentCard(a, () => actions.chooseAgent(a));
-    agentPortraits.push(c.fig); // couche 2 de la parallaxe (l'img garde son animation de planche)
-    agentCartes.appendChild(c.card);
-    agentCards.push(c);
+    const card = pressable(el('button', 'sr-ae-carte'), () => actions.agentFiche(a));
+    card.dataset.agent = String(a);
+    const boite = el('div', 'sr-ae-carte-img');
+    const img = el('img');
+    img.alt = '';
+    img.draggable = false;
+    img.decoding = 'async';
+    const cadenas = el('span', 'sr-ae-cadenas');
+    cadenas.appendChild(icon('sr-i-lock'));
+    boite.append(img, cadenas);
+    const bas = el('div', 'sr-ae-carte-bas');
+    const role = el('div', 'sr-ae-role', '');
+    const nom = el('div', 'sr-ae-nom', AGENTS[a].name);
+    const cond = el('div', 'sr-ae-cond', '');
+    const prog = el('div', 'sr-ae-prog', '');
+    const skins = el('div', 'sr-ae-skins', '');
+    const arme = el('div', 'sr-ae-arme');
+    arme.appendChild(icon('sr-w' + agentSignature(a)));
+    bas.append(role, nom, cond, prog, skins, arme);
+    card.append(boite, bas);
+    aeRangee.appendChild(card);
+    aeImgs.push(img);
+    aeCartes.push({ card, img, cadenas, role, nom, cond, prog, skins, arme, verrou: false });
   }
-  scr.appendChild(agentCartes);
-  const pied = el('div', 'sr-agent-pied');
-  pied.appendChild(button('Retour', 'sr-btn', click(() => actions.quitAgent()), 'Échap'));
+  aeGrille.appendChild(aeRangee);
+  scr.appendChild(aeGrille);
+  aeFiche = ficheUI.build({ el, icon, pressable, setText, hex, formatValue, meta: ctx.meta, hub, onVignette: aeVignette });
+  scr.appendChild(aeFiche);
+  const pied = el('div', 'sr-ae-pied');
+  aeRetour = button(T.retour, 'sr-btn sr-ae-retour', () => actions.agentRetour());
+  aeJouer = button(T.jouer, 'sr-btn sr-ae-jouer', () => actions.agentJouer(aeAgentJouer()));
+  aeJouerLabel = aeJouer.querySelector('.sr-btn-label');
+  pied.append(aeRetour, aeJouer);
+  ficheUI.construirePied(pied);
   scr.appendChild(pied);
-  plxBind(scr); // le pointeur n'est suivi que sur cet écran (l'écouteur est sur son nœud, masqué le reste du temps)
+  scr.addEventListener('pointermove', aeSouris);
+  plxBind(scr);
   addScreen(SCREEN.AGENT, scr);
+  // images décodées dès le démarrage (fonds, cartes, vignettes de la fiche) : l'écran et la fiche s'ouvrent sans image longue
+  for (const src of aeSources()) {
+    const im = new Image();
+    im.decoding = 'async';
+    im.src = src;
+    if (typeof im.decode === 'function') im.decode().catch(() => {});
+    aePrechargees.push(im);
+  }
 }
 
-function fillAgent(data) {
-  agentCurrent = data && data.current >= 0 && data.current < AGENT_COUNT ? data.current : 0;
-  const metaMod = ctx.meta;
-  for (let a = 0; a < agentCards.length; a++) {
-    const locked = a !== 0 && !!metaMod && !metaMod.isUnlocked('agent', AGENTS[a].key);
-    paintAgentCard(agentCards[a], a, locked, a === agentCurrent, locked ? hub.agentCondition(a, data && data.best ? data.best.wave : 0) : null, false);
+/** Fonds (grille, fiche), cartes et vignettes de tous les agents (skins, silhouettes). */
+function aeSources() {
+  const out = [VITRINE.fonds.grille, VITRINE.fonds.agents];
+  for (let a = 0; a < AGENT_COUNT; a++) {
+    const k = AGENTS[a].key;
+    for (const sk of skinsDe(k)) out.push(VITRINE.cartes(k, sk), VITRINE.vignettes(k, sk));
+    out.push(VITRINE.cartes(k, 'base', { verrou: true }), VITRINE.vignettes(k, 'base', { verrou: true }));
   }
-  plxReset(agentFond, agentCartes, agentPortraits, AGENT_SCREEN.parallax);
+  return out;
+}
+
+/** Vue de main.js (agentView) : { vue, origine, agent, skinVise, best }. Hors combat. */
+function fillAgents(data, fresh) {
+  const vueChange = AE.vue !== data.vue;
+  aeData = data;
+  AE.vue = data.vue === 'fiche' ? 'fiche' : 'grille';
+  AE.origine = data.origine;
+  const fiche1 = AE.vue === 'fiche';
+  if (fiche1) AE.verrouFiche = ficheUI.fill(data);
+  if (fresh || vueChange) {
+    AE.vise = data.agent >= 0 && data.agent < AGENT_COUNT ? data.agent : 0;
+    // fiche : la vignette du skin visé ; grille ouverte du titre : « Jouer · <dernier agent> » (Entrée, Entrée relance) ;
+    // sinon (Noyau, retour de la fiche) : la carte visée
+    AE.focus = fiche1 ? AE_SKIN + ficheUI.indiceVise() : fresh && data.origine === 'titre' ? AE_JOUER : AE.vise;
+    // le survol attend un vrai déplacement du pointeur depuis sa position à l'ouverture (aeSouris)
+    // (curseur jamais bougé sur la page : pas d'événement de survol sans déplacement à craindre, le 1er compte)
+    const connu = ctx.input && ctx.input.curseurT ? ctx.input.curseurT(AE_POS) : 0;
+    AE_POS[2] = connu ? 0 : 1;
+    AE_SURVOL.carte = -1;
+  }
+  const T = AGENT_SCREEN.textes;
+  const best = data.best ? data.best.wave : 0;
+  for (let a = 0; a < AGENT_COUNT; a++) {
+    const c = aeCartes[a];
+    const A = AGENTS[a];
+    const v = aeVerrou(a);
+    c.verrou = v;
+    const src = VITRINE.cartes(A.key, ctx.meta ? ctx.meta.skinChoisi(A.key) : 'base', { verrou: v });
+    if (c.img.getAttribute('src') !== src) c.img.src = src;
+    c.card.classList.toggle('sr-verrou', v);
+    c.card.setAttribute('aria-disabled', v ? 'true' : 'false');
+    setText(c.role, v ? T.verrou : A.role);
+    c.nom.style.display = v ? 'none' : '';
+    c.arme.style.display = v ? 'none' : '';
+    c.cadenas.style.display = v ? '' : 'none';
+    const cond = v ? hub.agentCondition(a, best, true) : null;
+    setText(c.cond, cond ? cond.texte : '');
+    setText(c.prog, cond ? cond.prog : '');
+    c.cond.style.display = v ? '' : 'none';
+    c.prog.style.display = v ? '' : 'none';
+    const n = skinsDe(A.key).length;
+    setText(c.skins, !v && n >= 2 ? n + ' ' + T.skins : '');
+  }
+  aeTete.style.display = fiche1 ? 'none' : '';
+  aeGrille.style.display = fiche1 ? 'none' : '';
+  ficheUI.montrer(fiche1);
+  // agent verrouillé (fiche) : sa condition remplace « Jouer » — le focus n'y reste pas
+  aeJouer.style.display = fiche1 && AE.verrouFiche ? 'none' : '';
+  if (fiche1 && AE.verrouFiche && AE.focus === AE_JOUER) AE.focus = AE_RETOUR;
+  aePeindre();
+  if (fresh || vueChange) plxReset(aeFond, aeRangee, aeImgs, AGENT_SCREEN.parallax);
+}
+
+/** Focus (une seule chose en jaune), carte visée, « Jouer · <agent> » (refusé tant que l'agent est verrouillé). */
+function aePeindre() {
+  const grille = AE.vue === 'grille';
+  for (let a = 0; a < AGENT_COUNT; a++) {
+    const card = aeCartes[a].card;
+    card.classList.toggle('sr-focus', grille && AE.focus === a);
+    card.classList.toggle('sr-vise', grille && AE.focus >= AGENT_COUNT && AE.vise === a);
+  }
+  ficheUI.peindreFocus(!grille && AE.focus >= AE_SKIN ? AE.focus - AE_SKIN : -1);
+  aeRetour.classList.toggle('sr-focus', AE.focus === AE_RETOUR);
+  aeJouer.classList.toggle('sr-focus', AE.focus === AE_JOUER);
+  const j = aeAgentJouer();
+  setText(aeJouerLabel, AGENT_SCREEN.textes.jouer + ' · ' + AGENTS[j].name);
+  const v = aeVerrou(j);
+  aeJouer.classList.toggle('sr-refuse', v);
+  aeJouer.setAttribute('aria-disabled', v ? 'true' : 'false');
+}
+
+/**
+ * Survol (pointermove sur l'écran) : la carte survolée devient la carte visée, une vignette de skin, « Retour » ou « Jouer »
+ * survolés prennent le focus. Seulement après un VRAI déplacement du pointeur depuis l'ouverture : le curseur resté
+ * immobile sur une carte (celui du clic sur « Jouer » du titre) ne vole pas le focus du dernier agent joué (le navigateur
+ * envoie des événements de survol quand l'écran apparaît sous lui). Hors combat.
+ */
+function aeSouris(e) {
+  if (screen !== SCREEN.AGENT) return;
+  if (AE_POS[2] === 0) {
+    if (Math.abs(e.clientX - AE_POS[0]) + Math.abs(e.clientY - AE_POS[1]) < 3) return;
+    AE_POS[2] = 1;
+  }
+  const t = e.target;
+  if (!t || typeof t.closest !== 'function') return;
+  const c = t.closest('.sr-ae-carte');
+  if (c) {
+    // une carte traversée par un pointeur en mouvement ne change rien : elle n'est visée qu'après un arrêt (aeSurvolFin)
+    AE_SURVOL.carte = Number(c.dataset.agent);
+    AE_SURVOL.t = performance.now();
+    if (!AE_SURVOL.minuterie) AE_SURVOL.minuterie = setTimeout(aeSurvolFin, AGENT_SCREEN.survolMs);
+    return;
+  }
+  AE_SURVOL.carte = -1;
+  if (t.closest('.sr-ae-retour')) aeFocus(AE_RETOUR);
+  else if (t.closest('.sr-ae-jouer')) aeFocus(AE_JOUER);
+  else {
+    const v = t.closest('.sr-ae-vignette');
+    if (v && AE.vue === 'fiche') aeFocus(AE_SKIN + Number(v.dataset.k));
+  }
+}
+
+/** Fin de la minuterie de survol : vise la carte candidate si le pointeur y est resté immobile assez longtemps, sinon attend le reste. */
+function aeSurvolFin() {
+  AE_SURVOL.minuterie = 0;
+  if (AE_SURVOL.carte < 0 || screen !== SCREEN.AGENT) return;
+  const reste = AGENT_SCREEN.survolMs - (performance.now() - AE_SURVOL.t);
+  if (reste > 1) AE_SURVOL.minuterie = setTimeout(aeSurvolFin, reste);
+  else aeViser(AE_SURVOL.carte);
+}
+
+/** Survol d'une carte : elle devient la carte visée (grille seulement). */
+function aeViser(a) {
+  if (screen !== SCREEN.AGENT || AE.vue !== 'grille' || (AE.focus === a && AE.vise === a)) return;
+  AE.focus = a;
+  AE.vise = a;
+  aePeindre();
+}
+
+/** Survol de « Retour », « Jouer » ou d'une vignette. */
+function aeFocus(f) {
+  if (screen !== SCREEN.AGENT || AE.focus === f) return;
+  AE.focus = f;
+  aePeindre();
+}
+
+/** Clic sur la vignette k de la fiche : elle prend le focus, son skin est choisi (débloqué) ou seulement visé. */
+function aeVignette(k) {
+  if (screen !== SCREEN.AGENT || AE.vue !== 'fiche' || !aeData) return false;
+  AE.focus = AE_SKIN + k;
+  aePeindre();
+  return actions.agentSkin(aeData.agent, ficheUI.cle(k));
+}
+
+/**
+ * Flèches (main.js, STATE.AGENT) : dx −1 / 1, dy −1 (haut) / 1 (bas). Grille : ← / → d'une carte à l'autre, ↓ vers
+ * « Jouer », ↑ du pied vers la carte visée. Fiche : ← / → d'une vignette à l'autre, ↓ vers « Jouer » (« Retour » si
+ * l'agent est verrouillé), ↑ du pied vers la vignette du skin visé. Au pied, ← / → entre « Retour » et « Jouer ».
+ * Rend le focus.
+ */
+export function agentsBouger(dx, dy) {
+  AE_SURVOL.carte = -1; // le clavier reprend la main : un arrêt de souris en attente ne déplace plus la visée
+  if (screen !== SCREEN.AGENT) return -1;
+  const f = AE.focus;
+  const fiche1 = AE.vue === 'fiche';
+  const jouerOk = !(fiche1 && AE.verrouFiche);
+  let n = f;
+  if (f < AGENT_COUNT) {
+    if (dx !== 0) n = Math.max(0, Math.min(AGENT_COUNT - 1, f + dx));
+    else if (dy > 0) n = AE_JOUER;
+  } else if (f >= AE_SKIN) {
+    if (dx !== 0) n = AE_SKIN + Math.max(0, Math.min(ficheUI.nbSkins() - 1, f - AE_SKIN + dx));
+    else if (dy > 0) n = jouerOk ? AE_JOUER : AE_RETOUR;
+  } else if (dx < 0 && f === AE_JOUER) n = AE_RETOUR;
+  else if (dx > 0 && f === AE_RETOUR && jouerOk) n = AE_JOUER;
+  else if (dy < 0) n = fiche1 ? AE_SKIN + ficheUI.indiceVise() : AE.vise;
+  if (n !== f) {
+    AE.focus = n;
+    if (n < AGENT_COUNT) AE.vise = n;
+    audio.play(SFX.UI_CLICK);
+    aePeindre();
+  }
+  return AE.focus;
+}
+
+/** Entrée : carte → sa fiche ; vignette → son skin ; « Retour » ; « Jouer » avec l'agent visé. Rend la valeur de l'action. */
+export function agentsConfirmer() {
+  AE_SURVOL.carte = -1;
+  if (screen !== SCREEN.AGENT) return false;
+  if (AE.focus < AGENT_COUNT) return actions.agentFiche(AE.focus);
+  if (AE.focus >= AE_SKIN) return aeData ? actions.agentSkin(aeData.agent, ficheUI.cle(AE.focus - AE_SKIN)) : false;
+  if (AE.focus === AE_RETOUR) return actions.agentRetour();
+  return actions.agentJouer(aeAgentJouer());
+}
+
+/** La toile plein écran de la vitrine de la fiche (main.js → pauseAgent.openVitrine). */
+export function agentsToile() {
+  return ficheUI.getToile();
+}
+
+/** src/pause-agent.js : la vitrine attend le modèle de l'agent (vrai : « Chargement ») ou le montre (faux). */
+export function setVitrineAttente(on) {
+  ficheUI.setAttente(on);
+}
+
+/** Tests : { vue, origine, agent, skinVise, focus ('carte' | 'skin' | 'retour' | 'jouer'), cards, jouer, fiche }. */
+function agentsInspect() {
+  return {
+    vue: AE.vue,
+    origine: AE.origine,
+    agent: aeAgentJouer(),
+    skinVise: aeData ? aeData.skinVise : null,
+    focus: AE.focus < AGENT_COUNT ? 'carte' : AE.focus >= AE_SKIN ? 'skin' : AE.focus === AE_RETOUR ? 'retour' : 'jouer',
+    cards: aeCartes.length,
+    jouer: aeJouerLabel ? aeJouerLabel.textContent : '',
+    fiche: AE.vue === 'fiche' ? ficheUI.inspect() : null,
+  };
 }
 
 // ----- Parallaxe commune (§ E2.D, rendue commune au § E4.B.2) : écran des agents et hub -------------------------------
@@ -2649,11 +2866,9 @@ function buildHub() {
   const scr = hub.build({
     el, icon, pressable, hex, button, audio, actions, SFX,
     meta: ctx.meta, defis: ctx.defis,
-    agentCard, paintAgentCard: (c, a, locked, current, cond) => paintAgentCard(c, a, locked, current, cond, true),
     onTab: (node) => {
       if (screen === SCREEN.HUB) plxSwap2([node]);
     },
-    ficheHub: majFicheHub, // § E4.L.1 : la fiche de la pause, montrée au Noyau (même nœud, même fonction)
     silhouette: appliquerSil, // § E4.L.2 : vignette d'agent verrouillé en silhouette pleine
     // § E5.W : la recette en formule à icônes (src/ui-recette.js) — ui-hub.js n'importe que config.js
     creerFormule,
@@ -2689,6 +2904,10 @@ export function hubConfirm() {
 /** § E4.L.1 : Échap au Noyau — ferme la fenêtre d'un élément de la fiche si elle est ouverte (vrai), sinon rien. */
 export function hubBack() {
   return screen === SCREEN.HUB && closeDetail();
+}
+/** Onglet ouvert du Noyau (l'écran Agents ouvert depuis le Noyau y ramène au retour). */
+export function hubOnglet() {
+  return hub.onglet();
 }
 /** Tests : onglet, zone, case visée, cases de la Collection, et décalage courant des trois couches de parallaxe. */
 export function hubInspect() {
@@ -3158,6 +3377,8 @@ function fillGameOver(data) {
   const C = data.cause || null;
   setText(overCause.detruitVal, C && C.detruit ? C.detruit : '');
   overCause.detruit.style.display = C && C.detruit ? '' : 'none';
+  setText(overCause.conseil, C && C.conseil ? C.conseil : ''); // § E5.AK
+  overCause.conseil.style.display = C && C.detruit && C.conseil ? '' : 'none';
   setText(overCause.plusVal, C && C.groupe ? C.groupe + ' ' : '');
   setText(overCause.plusPct, C && C.groupe ? C.pct + ' %' : '');
   overCause.plus.style.display = C && C.groupe ? '' : 'none';
@@ -3190,7 +3411,7 @@ function fillScreen(id, data, fresh) {
     setSliders(data);
     fillKeys(data ? data.layout : 'unknown');
     if (CARTE) {
-      placerFiche(FICHE_PAUSE); // § E4.L.1 : la fiche revient du Noyau
+      placerFiche(); // § E4.L.1
       majFiche();
     }
     if (fresh) pauseReset(data); // § E3.I : fenêtre d’élément et panneaux refermés à chaque ouverture de la pause
@@ -3200,7 +3421,7 @@ function fillScreen(id, data, fresh) {
   else if (id === SCREEN.SHOP) fillShop(data, fresh);
   else if (id === SCREEN.GAMEOVER) fillGameOver(data);
   else if (id === SCREEN.CHEST) fillChest(data); // § E2.C
-  else if (id === SCREEN.AGENT) fillAgent(data); // § E2.D
+  else if (id === SCREEN.AGENT) fillAgents(data, fresh); // Écran Agents (tâche 5)
   else if (id === SCREEN.FUSION) fillFusion(data); // § E3.F
   else if (id === SCREEN.HUB) fillHub(data, fresh); // § E4.B
 }
@@ -4316,7 +4537,7 @@ export function inspect(out) {
   out.bossShielded = last[L_BOSS_SHIELD] === 1;
   out.bossEnrageTick = bossTickEnrage && bossTickEnrage.style.display !== 'none' ? bossTickEnrage.style.left : '';
   // § E2.D
-  out.agentScreen = screen === SCREEN.AGENT ? { current: agentCurrent, cards: agentCards.length } : null;
+  out.agentScreen = screen === SCREEN.AGENT ? agentsInspect() : null; // Écran Agents (tâche 5)
   out.parallax = { off: plxOff, px: [PLX[4], PLX[5], PLX[6], PLX[7], PLX[8], PLX[9]], scale: plxScale };
   out.banishArmed = banishArmed;
   out.puceStep = last[L_PUCE]; // § E3.J : cran de la puce CPU (−1 : pas encore écrit ; 0 … UI_CARTE.puce.steps)
@@ -4419,8 +4640,11 @@ function buildFusion() {
   scr.appendChild(head);
 
   const stage = el('div', 'sr-fusion-stage');
-  const a = caseSlot('objet', 'sr-case sr-case-objet sr-fusion-a', 'sr-m-tesla');
-  const b = caseSlot('objet', 'sr-case sr-case-objet sr-fusion-b', 'sr-m-cryo');
+  //#region e5:AL-retrait-cryogel
+  // icônes de départ (remplacées à chaque fusion) = Virus + Surchauffe, le Cryogel est retiré
+  const a = caseSlot('objet', 'sr-case sr-case-objet sr-fusion-a', 'sr-m-virus');
+  const b = caseSlot('objet', 'sr-case sr-case-objet sr-fusion-b', 'sr-m-burn');
+  //#endregion e5:AL-retrait-cryogel
   fusionCaseA = a;
   fusionCaseB = b;
   fusionNameA = el('span', 'sr-fusion-ing', '');
@@ -4523,15 +4747,18 @@ function buildPlis(panel, reglages, touches) {
     const box = el('div', 'sr-pli ' + cls);
     box.style.display = 'none';
     remplir(box);
-    const btn = button(label, 'sr-btn sr-pli-btn', click(() => togglePli(i)));
-    btn.setAttribute('aria-expanded', 'false');
     const i = plis.length;
+    // § E5.AG (Femz, 22/11) : label null = panneau sans bouton (bloc des touches en carte mère, déplacé par buildParam)
+    const btn = label ? button(label, 'sr-btn sr-pli-btn', click(() => togglePli(i))) : null;
     plis.push({ btn, box });
-    barre.appendChild(btn);
+    if (btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      barre.appendChild(btn);
+    }
     corps.push(box);
   };
   ajoute('Paramètres', 'sr-pli-reglages', reglages);
-  ajoute('Touches', 'sr-pli-touches', touches);
+  ajoute(CARTE ? null : 'Touches', 'sr-pli-touches', touches);
   panel.appendChild(barre);
   for (const b of corps) panel.appendChild(b);
 }
@@ -4786,7 +5013,6 @@ function fillDetail(genre, k) {
   detailEvo.style.display = 'none';
   detailNiv.root.style.display = '';
   detailRarete.root.style.display = '';
-  if (genre === D_ARME && FICHE[0] === FICHE_HUB) return fillDetailHub(k); // § E4.L.1 : l'arme signature au Noyau
   if (genre === D_ARME) {
     const w = k < weapons.slots.length ? weapons.slots[k] : -1;
     if (w < 0) return false;
@@ -4859,6 +5085,9 @@ function fillDetail(genre, k) {
       for (let f = 0; f < FUSIONS.length; f++) {
         const F = FUSIONS[f];
         if (F.a !== id && F.b !== id) continue;
+        //#region e5:AL-retrait-cryogel
+        if (F.enabled === false) continue; // fusion fermée (Orage glacé, Cryogel retiré) : pas annoncée
+        //#endregion e5:AL-retrait-cryogel
         const vu = ctx.meta ? ctx.meta.isDiscovered('fusions', f) : false;
         detailEvo.style.display = '';
         setText(detailEvoLab, 'Fusion');
@@ -4912,7 +5141,7 @@ function pauseReset(data) {
 }
 
 // ----- Retours de Femz du 16/11/2026, point 1 : boîte « MENU » repliée au-dessus de la fiche -------------------------
-let pausePanel = null; // la fenêtre du menu (Reprendre, Recommencer, Menu, Paramètres, Touches)
+let pausePanel = null; // la fenêtre du menu (Reprendre, Inventaire, Paramètres, Recommencer, Quitter la partie : § E5.AG)
 let pauseEl = null;
 let menuPliBtn = null;
 let menuOuvert = 0;
@@ -4980,16 +5209,6 @@ export function getPortraitCanvas() {
 /** Portrait 3D prêt (vrai) : l'image pixel de repli est cachée ; faux : elle revient. */
 export function setPortrait3d(on) {
   if (fichePortraitBox) fichePortraitBox.classList.toggle('sr-3d', !!on);
-}
-
-/**
- * § E5.W : modèle de l'agent choisi en lecture (Noyau) — ni l'image pixel ni le portrait 3D : le dernier rendu s'efface,
- * une ligne de scan descend et « Chargement » s'affiche (ui-pile.css, transform et opacité seulement, aucune minuterie).
- */
-export function setPortraitAttente(on) {
-  if (!fichePortraitBox) return;
-  if (on && fichePortraitBox.dataset.attente !== HUB.textes.chargementAgent) fichePortraitBox.dataset.attente = HUB.textes.chargementAgent;
-  fichePortraitBox.classList.toggle('sr-attente', !!on);
 }
 
 /** Tests : état de la pause (fenêtre ouverte, panneaux, textes de la fenêtre). Hors chemin chaud. */
@@ -5680,134 +5899,25 @@ export function remplirCarac(c, a, live) {
 /** Tests (§ E4.E.7) : ce qu'affiche la colonne de la pause, ligne par ligne. */
 export function caracInspect() {
   if (!ficheCarac) return null;
-  if (FICHE[0] === FICHE_HUB) return FICHE_STATS.lignes.map((L, k) => ({ id: L.id, nom: L.nom, total: ficheCarac.tot[k], base: ficheCarac.base[k], val: ficheCarac.rows[k].val.textContent, det: ficheCarac.rows[k].det.textContent }));
   return FICHE_STATS.lignes.map((L, k) => ({ id: L.id, nom: L.nom, total: caracTot[k], base: caracBase[k], val: ficheCarac.rows[k].val.textContent, det: ficheCarac.rows[k].det.textContent }));
 }
 
-// ===== § E4.L — chantier L : une seule fiche (pause et Noyau), silhouettes pleines (ARCHITECTURE.md § E4.L) ============
-let ficheEl = null; // le nœud .sr-fiche (buildFiche) : déplacé entre la pause et l'onglet Agents du Noyau
+// ===== § E4.L — chantier L : la fiche de la pause, silhouettes pleines (ARCHITECTURE.md § E4.L) =======================
+// (Écran Agents, tâche 5 : la fiche n'est plus montrée au Noyau — son onglet Agents ouvre l'écran Agents)
+let ficheEl = null; // le nœud .sr-fiche (buildFiche)
 let pauseGauche = null; // son hôte en pause (colonne de gauche, sous la boîte MENU)
 let fichePassif = null;
 let fichePassifNom = null;
 let fichePassifTxt = null;
 let fichePassifProg = null;
-const FICHE_PAUSE = 0;
-const FICHE_HUB = 1;
-// [0] hôte (FICHE_PAUSE | FICHE_HUB), [1] agent montré au Noyau, [2] verrouillé (0 / 1)
-const FICHE = new Int32Array([FICHE_PAUSE, -1, 0]);
 const SIL = []; // data:URL des vignettes silhouette, par agent (fabriquerSilhouettes)
 const silImgs = []; // { img, a } : images qui attendent leur silhouette
-const SILG = []; // 18/11 : grandes silhouettes des cartes de l'écran des agents (image 0 de la planche)
-const silGImgs = []; // { img, a } : portraits des cartes qui attendent leur grande silhouette
 
-/** Pose la fiche dans son hôte : la pause, ou l'onglet Agents du Noyau (hub.ficheHote). Hors combat. */
-function placerFiche(mode) {
-  if (!ficheEl) return;
-  const hote = mode === FICHE_HUB ? hub.ficheHote() : pauseGauche;
-  if (!hote) return;
-  if (FICHE[0] !== mode) closeDetail();
-  FICHE[0] = mode;
-  if (ficheEl.parentNode !== hote) hote.appendChild(ficheEl);
-  // boîte d'infos (20/11) : au Noyau, posée sur l'écran du hub lui-même — hors des calques en parallaxe (transform :
-  // bloc conteneur décalé) et de la zone qui défile (elle la coupait) ; à la pause, dans la fiche
-  const hoteDetail = mode === FICHE_HUB ? hote.closest('.sr-hub') || ficheEl : ficheEl;
-  if (detailBox && detailBox.parentNode !== hoteDetail) hoteDetail.appendChild(detailBox);
-  ficheEl.classList.toggle('sr-fiche-noyau', mode === FICHE_HUB);
-  ficheEl.classList.toggle('sr-fiche-verrou', mode === FICHE_HUB && FICHE[2] === 1);
-}
-
-/**
- * § E4.L.1 — la fiche au Noyau pour l'agent a (verrou : silhouette, « ? », condition { texte, prog }). Même nœud et
- * mêmes éléments que la fiche de la pause : en-tête (rôle puis nom), arme signature dans la 1re case, passif,
- * CARACTÉRISTIQUES de base, portrait 3D (actions.hubPortrait). a < 0 : fiche rendue à la pause, portrait fermé.
- */
-function majFicheHub(a, verrou, cond) {
-  if (!ficheEl) return;
-  if (!(a >= 0 && a < AGENT_COUNT)) {
-    if (actions.hubPortrait) actions.hubPortrait(-1, false);
-    return;
-  }
-  const change = FICHE[1] !== a || FICHE[2] !== (verrou ? 1 : 0);
-  FICHE[1] = a;
-  FICHE[2] = verrou ? 1 : 0;
-  if (change) closeDetail();
-  placerFiche(FICHE_HUB);
-  const A = AGENTS[a];
-  ficheTitre.dataset.type = verrou ? HUB.textes.verrou.toUpperCase() : String(A.role).toUpperCase();
-  setText(ficheTitre, A.name);
-  ficheImage(fichePortrait, a, verrou);
-  // arme signature : 1re case (carrée) ; les autres cases sont cachées au Noyau (CSS) ; « ? » si verrouillé
-  const w = agentSignature(a);
-  for (let k = 0; k < ficheArmes.length; k++) {
-    const c = ficheArmes[k];
-    if (!c) continue;
-    const sig = k === FICHE_GAUCHE[0];
-    if (sig && !verrou && w >= 0) {
-      c.cell.className = 'sr-fiche-arme sr-fiche-sig';
-      c.use.setAttribute('href', SLOT_HREF[w]);
-      c.cell.style.setProperty('--wc', SLOT_COLOR[w]);
-      c.cell.title = SLOT_TITLE[w];
-      setText(c.lvl, '');
-    } else {
-      c.cell.className = sig ? 'sr-fiche-arme sr-vide sr-fiche-sig sr-fiche-inconnu' : 'sr-fiche-arme sr-vide';
-      c.use.removeAttribute('href');
-      c.cell.style.removeProperty('--wc');
-      c.cell.title = '';
-      setText(c.lvl, sig ? '?' : '');
-    }
-  }
-  if (verrou) {
-    setText(fichePassifNom, HUB.textes.verrou);
-    setText(fichePassifTxt, cond ? cond.texte : '?');
-    setText(fichePassifProg, cond ? cond.prog : '');
-  } else {
-    setText(fichePassifNom, 'Passif · ' + A.passive.name);
-    setText(fichePassifTxt, A.passive.desc);
-    setText(fichePassifProg, '');
-  }
-  fichePassifProg.style.display = verrou ? '' : 'none';
-  if (verrou) {
-    for (let k = 0; k < ficheCarac.rows.length; k++) {
-      setText(ficheCarac.rows[k].val, '?');
-      setText(ficheCarac.rows[k].det, '');
-      ficheCarac.rows[k].row.classList.remove('sr-carac-bonus');
-      ficheCarac.tot[k] = NaN;
-      ficheCarac.base[k] = NaN;
-    }
-  } else remplirCarac(ficheCarac, a, false);
-  if (actions.hubPortrait) actions.hubPortrait(a, verrou);
-}
-
-/** Fenêtre de l'arme signature au Noyau : niveau 1, chiffres de table, rareté Root, recharge / action au niveau 1. */
-function fillDetailHub(k) {
-  if (k !== FICHE_GAUCHE[0] || FICHE[2] === 1) return false;
-  const w = agentSignature(FICHE[1]);
-  if (w < 0) return false;
-  const W = WEAPONS[w];
-  setText(detailGenre, 'ARME · SIGNATURE');
-  setText(detailNom, W.name);
-  detailIcon.setAttribute('href', SLOT_HREF[w]);
-  detailRareteSet(RARITIES[5].name, hexColor(RARITIES[5].color));
-  setText(detailNiv.label, 'NIV.');
-  setText(detailNiv.value, '1');
-  const labs = W.statLabels || [];
-  const units = W.statUnits || [];
-  const Rc = ctx.cooldowns;
-  const cdW = Rc && Rc.isCooldown(Rc.KIND_WEAPON, w) ? RECHARGES.weapons[WEAPON_KEYS[w]] : null;
-  const cache = cdW && cdW.hideStat >= 0 ? cdW.hideStat : -1;
-  for (let s = 0; s < STAT_COUNT && s < DETAIL_LIGNES; s++) {
-    if (!labs[s] || s === cache) continue;
-    const u = units[s] || '';
-    detailLigne(s, labs[s], formatValue(weapons.getStatAt(w, s, 1)) + (u ? (u.charCodeAt(0) === 47 ? '' : ' ') + u : ''), '1/' + STAT_MAX_LEVEL);
-  }
-  setText(detailEffet, cdW ? (W.detail || W.desc || '') + '\n' + RECHARGE.texteEffet : W.detail || W.desc || ''); // § E4.N.2 : l'explication longue
-  if (cdW) fillSalves(Rc.KIND_WEAPON, w, 1, 21);
-  const Ev = ctx.evolutions;
-  const h = Ev && typeof Ev.hintFor === 'function' ? Ev.hintFor(w) : null;
-  detailEvo.style.display = '';
-  setText(detailEvoLab, 'Évolution');
-  remplirRecette(w, h);
-  return true;
+/** Pose la fiche dans son hôte, la pause (colonne de gauche), avec sa boîte d'infos. Hors combat. */
+function placerFiche() {
+  if (!ficheEl || !pauseGauche) return;
+  if (ficheEl.parentNode !== pauseGauche) pauseGauche.appendChild(ficheEl);
+  if (detailBox && detailBox.parentNode !== ficheEl) ficheEl.appendChild(detailBox);
 }
 
 /**
@@ -5843,55 +5953,21 @@ function fabriquerSilhouettes() {
       }
     };
     im.src = AGENT_SCREEN.portraits[a];
-    // 18/11 : grande silhouette des cartes de l'écran des agents = image 0 de la planche, même couleur
-    const pl = new Image();
-    pl.onload = () => {
-      const n = PORTRAIT.boucles[a].images;
-      const c = document.createElement('canvas');
-      c.width = Math.round(pl.naturalWidth / n);
-      c.height = pl.naturalHeight;
-      const g2 = c.getContext('2d');
-      g2.drawImage(pl, 0, 0);
-      const d = g2.getImageData(0, 0, c.width, c.height);
-      const px = d.data;
-      for (let i = 0; i < px.length; i += 4) {
-        px[i] = r;
-        px[i + 1] = g;
-        px[i + 2] = b;
-      }
-      g2.putImageData(d, 0, 0);
-      SILG[a] = c.toDataURL('image/png');
-      for (const s of silGImgs) {
-        if (s.a !== a || s.img.dataset.sil !== '1') continue;
-        s.img.src = SILG[a];
-        s.img.style.visibility = '';
-      }
-    };
-    pl.src = AGENT_SCREEN.planches[a];
   }
 }
 
-/**
- * 18/11 (« A en animé ») : portrait d'une carte de l'écran des agents — la planche de l'idle (AGENT_SCREEN.planches,
- * jouée en CSS steps, classe sr-anime) ou, verrouillé, la grande silhouette pleine (image 0 de la planche). Hors combat.
- */
-function portraitAnime(img, a, verrou) {
+/** 18/11 (« A en animé ») : la planche de l'idle de l'agent a (AGENT_SCREEN.planches), jouée en CSS steps (sr-anime). */
+function portraitAnime(img, a) {
   if (!img || !(a >= 0 && a < AGENT_COUNT)) return;
-  if (!silGImgs.some((s) => s.img === img)) silGImgs.push({ img, a });
-  img.dataset.sil = verrou ? '1' : '0';
-  img.classList.toggle('sr-anime', !verrou);
-  const src = verrou ? SILG[a] || '' : AGENT_SCREEN.planches[a];
-  if (verrou && !SILG[a]) {
-    img.style.visibility = 'hidden'; // jamais le vrai portrait d'un verrouillé, même avant la silhouette
-    return;
-  }
+  img.dataset.sil = '0';
+  img.classList.add('sr-anime');
   img.style.visibility = '';
-  if (img.getAttribute('src') !== src) img.src = src;
+  if (img.getAttribute('src') !== AGENT_SCREEN.planches[a]) img.src = AGENT_SCREEN.planches[a];
 }
 
 /**
- * Femz (21/11) : image de repli de la fiche (avant le portrait 3D) — la planche animée de l'idle, comme sur l'écran des
- * agents (portraitAnime) ; verrouillé : la silhouette pleine, fixe. Hors combat.
+ * Femz (21/11) : image de repli de la fiche (avant le portrait 3D) — la planche animée de l'idle (portraitAnime) ;
+ * verrouillé : la silhouette pleine, fixe. Hors combat.
  */
 function ficheImage(img, a, verrou) {
   if (!img || !(a >= 0 && a < AGENT_COUNT)) return;
@@ -5904,7 +5980,7 @@ function ficheImage(img, a, verrou) {
     appliquerSil(img, a, true);
     return;
   }
-  portraitAnime(img, a, false);
+  portraitAnime(img, a);
 }
 
 /** Vignette img de l'agent a : silhouette pleine si verrouillé, sinon son portrait. Hors combat. */
@@ -5922,9 +5998,9 @@ function appliquerSil(img, a, verrou) {
   if (img.getAttribute('src') !== src) img.src = src;
 }
 
-/** Tests (§ E4.L) : hôte de la fiche, agent montré, verrou. */
+/** Tests (§ E4.L) : hôte de la fiche (la pause), nombre de fiches, silhouettes prêtes. */
 export function ficheInspect() {
-  return { hote: FICHE[0] === FICHE_HUB ? 'noyau' : 'pause', agent: FICHE[1], verrou: FICHE[2] === 1, fiches: document.querySelectorAll('.sr-fiche').length, silhouettes: SIL.filter(Boolean).length };
+  return { hote: 'pause', fiches: document.querySelectorAll('.sr-fiche').length, silhouettes: SIL.filter(Boolean).length };
 }
 
 //#region e5:L-textes-guide

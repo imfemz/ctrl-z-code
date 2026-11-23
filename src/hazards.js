@@ -17,6 +17,7 @@ import { ARGF, F_DX, F_DZ, F_SX, F_SZ, F_T, F_V, F_X, F_Z, P } from './state.js'
 import * as TC from './tirs-canon.js'; // § E4.J : obus en vol dans le maillage des balles (ancien visuel)
 import { E3_ROBOTS, ENEMY } from './config.js'; // § E3.D : mines du poseur (HAZ.MINE), cercle de la foreuse (HAZ.DRILL)
 import { E } from './state.js';
+import { ORIGINE_COUP } from './state.js'; // § E5.AK : origine de l'obus, lue par hitPlayer au coup mortel
 import { DANGERS_GUIDE } from './config.js'; // § E5.M : mine annoncée, flaque retardée, décalques des robots
 import { CONFORT_FLASHS as CF } from './config.js'; // § E5.X5 (audit C12) : réglage « Flashs »
 import { COMBAT_GUIDE, PALETTE } from './config.js'; // § E5.N : disques des kamikazes qui ne s'additionnent pas
@@ -332,10 +333,17 @@ export function update(dt) {
       const r = hR[k];
       const dmg = hDmg[k];
       const cause = hCause[k]; // § E5.Q
+      //#region e5:AK-mort-claire
+      // § E5.AK : un obus dessiné en vol (élite Instable, tireur v3) vient de là d'où il est parti — lu par hitPlayer
+      ORIGINE_COUP[0] = hOX[k];
+      ORIGINE_COUP[1] = hOZ[k];
+      ORIGINE_COUP[2] = hShell[k] === 1 ? 1 : 0;
+      //#endregion e5:AK-mort-claire
       remove(k);
       strikes++;
       const hpBefore = P.hp;
       damage.explode(x, z, r, 0, dmg, DMG_SRC.KAMIKAZE, DMG.NO_CRIT, FXK.KAMIKAZE, OBUS.trauma, OBUS.punch, 0, -1, cause);
+      ORIGINE_COUP[2] = 0; // § E5.AK
       if (P.hp < hpBefore) strikeHits++;
     } else if (kind === HAZ.ORBITAL) {
       if (hT[k] < hDur[k]) continue;
