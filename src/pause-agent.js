@@ -20,13 +20,14 @@
 // renderVitrine / closeVitrine ; une seule chose ouverte à la fois (vitrine OU portrait de la pause).
 // Aucune allocation par image dans ce module : vecteurs et tableaux créés à la construction.
 import * as THREE from 'three';
+import { SKIN_BASE, skinLisere, skinsDe } from './config.js';
 import { AGENTS, ANIM, PAUSE, PORTRAIT_CAPE, SILHOUETTE, VITRINE, WEAPONS, WEAPON_KEYS } from './config.js';
 import { uniformsPeints } from './rendu/materiaux.js';
 import { envoyer } from './rendu/envois.js';
 import { IDLES_AGENTS } from './config.js'; // § E5.F.13 : idle du marteau
 import { run } from './state.js';
 import * as heros from './anim/heros-anim.js';
-import { surfaceDos, profilBras, profilJambe, rayonsJambes } from './anim/dos-reel.js'; // skins, tâche 2 : cape et tissus du portrait sur le dos réel, bras réels
+import { surfaceDos, profilBras, profilJambe, rayonsJambes, axeKatana } from './anim/dos-reel.js'; // skins, tâche 2 : cape et tissus du portrait sur le dos réel, bras réels
 import { PEINT } from './rendu/reglages.js';
 
 let ctx = null;
@@ -42,6 +43,9 @@ let matSil = null; // § E4.L.2 : corps de la silhouette (couleur unie, sans lum
 let matSilCape = null; // § E4.L.2 : cape de la silhouette (même couleur, double face)
 let mesh = null;
 let geoPosee = null; // géométrie sur laquelle le portrait est construit (autre agent → reconstruit)
+let skinM = SKIN_BASE; // skin du modèle sur lequel le portrait est construit (liseré, reconstruction au changement)
+let skinPause = SKIN_BASE; // skin porté par le héros de la pause
+let vitrineSkin = SKIN_BASE; // skin montré par la vitrine (fiche, titre)
 let dPosee = null; // § E5.K : données (pièces, vides) du modèle du portrait construit
 let fixe = false; // § E5.K : la fiche montre l'image fixe d'un agent pas chargé
 // 21/11 (Femz : « les perso sont décentrés ») : à chaque ouverture, la caméra se recentre sur la silhouette POSÉE (vue
@@ -116,9 +120,14 @@ let capeMod = null;
 let capeMesh = null;
 let capeMat = null; // matériau peint de la cape du portrait (rendu à la cape hors silhouette)
 // § E5.I : tissus du Shinobi du portrait (instance à part) ; [0] actifs (1 / 0), [1] replacer
-let tisMod = null;
+let tisMod = null; // jeu de tissus du modèle montré (celui de son skin)
 let tisMesh = null;
 let tisMat = null;
+// skin ombre (tâche 3) : deux instances, [0] tissus.js?portrait (base), [1] tissus.js?portrait-ombre (cape gothique) ;
+// leurs maillages et matériaux peints
+const TIS_MODS = [null, null];
+const TIS_MESHS = [null, null];
+const TIS_MATS = [null, null];
 const TIS = new Int8Array(2);
 const TIS_PIV = new Float64Array(3); // pivot de l'os du bassin
 const TIS_ZERO = new Float64Array(3); // axe du katana : repère du modèle (celui du buste)
@@ -167,8 +176,16 @@ export function init(context) {
   // § E5.I : tissus du Shinobi du portrait (matériau de la cape : même programme, rien de plus à compiler)
   import('./anim/tissus.js?portrait').then(
     (m) => {
-      tisMod = m;
+      TIS_MODS[0] = m;
+      if (tisMod === null) tisMod = m;
       M[0] = -1; // l'habillage suivant pose les tissus si l'agent montré en porte
+    },
+    () => {},
+  );
+  import('./anim/tissus.js?portrait-ombre').then(
+    (m) => {
+      TIS_MODS[1] = m;
+      M[0] = -1; // idem : le skin ombre montré prend sa cape
     },
     () => {},
   );
@@ -306,11 +323,11 @@ void main() {
 }
 
 /** Données du modèle de l'agent a (pièces, vides, géométrie) ; en repli, le héros posé. */
-function donneesAgent(a) {
+function donneesAgent(a, skin = SKIN_BASE) {
   // § E5.K : seuls l'agent CHOISI et celui de la fiche de l'écran Agents sont chargés (player.modeleAgent : null pour un
   // autre) — jamais montré sur le modèle d'un autre
   if (ctx.player && ctx.player.modeleAgent) {
-    const d = ctx.player.modeleAgent(a);
+    const d = ctx.player.modeleAgent(a, skin);
     return d && d.geometry ? d : null;
   }
   const hm = heros.getMesh(); // page sans module player (prototype) : le héros posé
@@ -352,9 +369,10 @@ function ecrirePeau(geometry, pieces) {
 }
 
 /** Squelette du portrait sur la géométrie du modèle de l'agent a. Faux si aucun modèle n'est arrivé. Hors combat. */
-function construire(a) {
-  const d = donneesAgent(a);
+function construire(a, skin = SKIN_BASE) {
+  const d = donneesAgent(a, skin);
   if (!d) return false;
+  skinM = skin;
   if (geoPosee === d.geometry && mesh !== null) return true;
   if (mesh !== null) {
     mesh.removeFromParent();
@@ -383,7 +401,7 @@ function construire(a) {
   });
   root.add(buste);
   pieces.forEach((p, i) => {
-    const haut = p.parent < 0 && /^(bras_|tete|tourelle_|arme_katana(_evo)?$|arme_sentinelle(_evo)?$|arme_canon(_evo)?$)/.test(p.nom); // comme heros-anim (katana du dos, tourelles du dos)
+    const haut = p.parent < 0 && /^(bras_|tete|tourelle_|col_echarpe$|arme_katana(_evo)?$|arme_sentinelle(_evo)?$|arme_canon(_evo)?$)/.test(p.nom); // comme heros-anim (katana du dos, tourelles du dos)
     const parent = p.parent >= 0 ? objs[p.parent] : haut ? buste : root;
     const pp = p.parent >= 0 ? pieces[p.parent].pivot : [0, 0, 0];
     objs[i].position.set(p.pivot[0] - pp[0], p.pivot[1] - pp[1], p.pivot[2] - pp[2]);
@@ -451,8 +469,9 @@ function habiller(a, mode, verrou) {
   M[2] = verrou ? 1 : 0;
   mesh.material = verrou ? matSil : mat;
   mesh.castShadow = !verrou;
-  mat.userData.uniforms.uGlowColor.value.setHex(AGENTS[a].accent);
-  rim.color.setHex(AGENTS[a].accent);
+  const lisere = skinLisere(AGENTS[a].key, skinM, AGENTS[a].accent); // liseré propre au skin (carmin de l'ombre), sinon l'accent de l'agent
+  mat.userData.uniforms.uGlowColor.value.setHex(lisere);
+  rim.color.setHex(lisere);
   // armes : en pause, celles du héros du jeu (refreshWeapons à chaque image) ; en vitrine, la signature seule ; une
   // silhouette n'en porte aucune
   if (mode !== MODE_PAUSE || verrou) {
@@ -489,6 +508,17 @@ function habiller(a, mode, verrou) {
     capeMesh.material = verrou ? matSilCape : capeMat;
     capeMesh.castShadow = !verrou;
   }
+  // skin ombre (tâche 3) : le jeu de tissus du skin du modèle montré (repli sur la base tant que le sien n'est pas lu)
+  {
+    const j = skinM === 'ombre' && TIS_MODS[1] !== null ? 1 : 0;
+    if (TIS_MODS[j] !== null && tisMod !== TIS_MODS[j]) {
+      if (tisMod !== null) tisMod.couper();
+      tisMod = TIS_MODS[j];
+      tisMesh = TIS_MESHS[j];
+      tisMat = TIS_MATS[j];
+      TIS[0] = -1;
+    }
+  }
   // § E5.I : tissus du Shinobi (pan devant, pan du dos, queue de l'écharpe) ; silhouette unie si l'agent est verrouillé
   if (tisMod !== null && (change || TIS[0] < 0 || (TIS[0] === 0 && AGENTS[a].tissus))) {
     const d = dPosee;
@@ -496,11 +526,16 @@ function habiller(a, mode, verrou) {
       const ud = (d.vides || {}).cape_dos ? d.vides.cape_dos.userData : {};
       const pc = d.pieces.find((p) => p.nom === 'corps');
       for (let i = 0; i < 3; i++) TIS_PIV[i] = pc ? pc.pivot[i] : 0;
-      tisMod.init({ scene, dos: ud.a && ud.b && ud.rayon ? { a: ud.a, b: ud.b, rayon: ud.rayon } : null, surface: surfaceDos(d.geometry, d.pieces, 'libres'), jambes: rayonsJambes(d.geometry, d.pieces, PIED_LOCAL), devant: surfaceDos(d.geometry, d.pieces, 'libres', 'devant') });
+      const vi = d.vides || {};
+      const epaules = vi.cape_epaule_g && vi.cape_epaule_d ? { g: vi.cape_epaule_g.position, d: vi.cape_epaule_d.position } : null;
+      tisMod.init({ scene, dos: ud.a && ud.b && ud.rayon ? { a: ud.a, b: ud.b, rayon: ud.rayon } : null, surface: surfaceDos(d.geometry, d.pieces, 'libres'), jambes: rayonsJambes(d.geometry, d.pieces, PIED_LOCAL), devant: surfaceDos(d.geometry, d.pieces, 'libres', 'devant'), epaules, surfaceRepos: surfaceDos(d.geometry, d.pieces), katana: skinM === 'ombre' ? axeKatana(d.geometry, d.pieces) : null });
       if (tisMesh === null) {
         tisMesh = tisMod.getMesh();
         tisMesh.name = 'portrait-tissus';
         tisMat = tisMesh.material;
+        const j = TIS_MODS.indexOf(tisMod);
+        TIS_MESHS[j] = tisMesh;
+        TIS_MATS[j] = tisMat;
       }
       tisMod.setVisible(true);
       TIS[0] = 1;
@@ -574,12 +609,17 @@ export function prechauffer() {
   // un agent à cape (l'Éclaireur) : le programme de la cape est compilé même si l'agent courant est le Bastion
   // § E5.K : sur le modèle CHARGÉ (celui de l'agent choisi), habillé en Éclaireur le temps du préchauffage
   let charge = 0;
+  let chargeSkin = SKIN_BASE;
   if (ctx.player && ctx.player.aModeleAgent) {
     charge = -1;
-    for (let a = 0; a < AGENTS.length && charge < 0; a++) if (ctx.player.aModeleAgent(a)) charge = a;
+    for (let a = 0; a < AGENTS.length && charge < 0; a++) {
+      const l = skinsDe(AGENTS[a].key);
+      for (let i = 0; i < l.length && charge < 0; i++) if (ctx.player.aModeleAgent(a, l[i])) [charge, chargeSkin] = [a, l[i]];
+    }
     if (charge < 0) return;
   }
-  if (!construire(charge)) return;
+  const skin0 = skinM; // le portrait construit avant le préchauffage (repris à la fin)
+  if (!construire(charge, chargeSkin)) return;
   const a0 = M[0];
   const m0 = M[1];
   const v0 = M[2];
@@ -602,7 +642,7 @@ export function prechauffer() {
   lumieresPause();
   VN[4] = 1; // la vitrine ouverte (s'il y en a une) se recadre et se rhabille (M[0] = −1 ci-dessous)
   habiller(0, MODE_PAUSE, false);
-  if (a0 >= 0 && a0 !== 0 && construire(a0)) habiller(a0, m0, v0 === 1);
+  if (a0 >= 0 && (a0 !== 0 || skin0 !== chargeSkin) && construire(a0, skin0)) habiller(a0, m0, v0 === 1);
   M[0] = -1; // § E5.K : l'habillage du préchauffage n'est pas celui d'un agent montré (la prochaine ouverture le refait)
   M[4] = 1;
 }
@@ -645,7 +685,8 @@ function ouvrir(a, mode, verrou) {
   T[5] = 0;
   if (scene === null) creerScene();
   lumieresPause();
-  if (!construire(a)) {
+  skinPause = mode === MODE_PAUSE && ctx.player && ctx.player.skinCourant ? ctx.player.skinCourant() : SKIN_BASE;
+  if (!construire(a, skinPause)) {
     // § E5.K : agent pas chargé — IMAGE FIXE : le portrait pixel de la fiche (AGENT_SCREEN.portraits), aucun rendu 3D
     N[3] = 0;
     M[0] = a;
@@ -872,7 +913,8 @@ function brancherRotation(c) {
 export function render(realDt) {
   if (N[3] === 0 || mesh === null || M[1] === MODE_VITRINE) return;
   if (M[1] === MODE_PAUSE && (heros.getMesh() === null || heros.getMesh().geometry !== geoPosee)) {
-    if (!construire(run.agent)) return;
+    skinPause = ctx.player && ctx.player.skinCourant ? ctx.player.skinCourant() : SKIN_BASE;
+    if (!construire(run.agent, skinPause)) return;
     habiller(run.agent, MODE_PAUSE, false);
   }
   if ((N[4] === 1 || N[2] !== renderer.domElement.height) && !mesurer()) return; // toile cachée (menu)
@@ -1202,7 +1244,7 @@ function poserVitrine() {
 /** Construit et habille la vitrine sur l'agent VN[1] (lumières lum-b5, armes, sol). Faux si son modèle n'est pas chargé. */
 function habillerVitrine() {
   const a = VN[1];
-  if (!construire(a)) {
+  if (!construire(a, vitrineSkin)) {
     if (VN[6] === 0 && g2dV) g2dV.clearRect(0, 0, toileV.width, toileV.height);
     attenteVitrine(1);
     return false;
@@ -1252,6 +1294,7 @@ export function openVitrine(a, opts = {}) {
   if (scene === null) creerScene();
   if (VN[1] !== a || VN[0] === 0) VT[0] = 0; // autre agent ou vitrine fermée : l'idle repart de zéro (titre → fiche : accueil.cacher() ferme la vitrine avant)
   VN[0] = 1;
+  vitrineSkin = ctx.player && ctx.player.skinPour ? ctx.player.skinPour(a, opts.skin || SKIN_BASE) : SKIN_BASE; // repli sur la base si le fichier du skin ne charge pas
   VN[1] = a;
   VN[2] = opts.cadre === 'titre' ? 1 : 0;
   VN[3] = opts.verrou ? 1 : 0;
@@ -1294,7 +1337,7 @@ function reduireToile() {
  */
 export function renderVitrine(realDt) {
   if (VN[0] === 0) return;
-  if ((mesh === null || VN[6] === 1 || M[1] !== MODE_VITRINE || M[0] !== VN[1]) && !habillerVitrine()) return;
+  if ((mesh === null || VN[6] === 1 || M[1] !== MODE_VITRINE || M[0] !== VN[1] || skinM !== vitrineSkin) && !habillerVitrine()) return;
   if ((VN[4] === 1 || VB[6] !== renderer.domElement.width || VB[7] !== renderer.domElement.height) && !mesurerVitrine()) return;
   VT[0] += realDt;
   poserVitrine();
@@ -1388,7 +1431,8 @@ export function inspect(out = {}) {
     tisMod.inspect(c);
     out.tissusInfo = { sousPasTotal: c.sousPasTotal, yPointes: c.yPointes, katana: c.katana };
   }
-  out.geometrieAgent = mesh !== null && !!ctx.player && !!ctx.player.modeleAgent && ctx.player.modeleAgent(out.agent) !== null && mesh.geometry === ctx.player.modeleAgent(out.agent).geometry;
+  out.skin = skinM; // skin du modèle montré (portrait, vitrine)
+  out.geometrieAgent = mesh !== null && !!ctx.player && !!ctx.player.modeleAgent && ctx.player.modeleAgent(out.agent, skinM) !== null && mesh.geometry === ctx.player.modeleAgent(out.agent, skinM).geometry;
   out.idle = idleCuit !== null ? idleCuit.source : 'code'; // § E4.E.3
   if (mesh !== null && os.bras_d) out.qBrasD = [os.bras_d.quaternion.x, os.bras_d.quaternion.y, os.bras_d.quaternion.z, os.bras_d.quaternion.w];
   out.geometrieDuHeros = mesh !== null && heros.getMesh() !== null && mesh.geometry === heros.getMesh().geometry;

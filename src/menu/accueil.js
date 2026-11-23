@@ -244,7 +244,7 @@ export async function creerAccueil({ base = '/' } = {}) {
 
   function afficher() {
     const a = agents.getAgent();
-    const skin = meta.skinChoisi(AGENTS[a].key);
+    const skin = meta.skinEffectif(AGENTS[a].key);
     // déjà montré en cadre titre sur le même agent et le même skin (enterHub / enterTitle rappellent afficher) : on ne
     // rouvre pas la vitrine, sa cape et son idle ne repartent pas de zéro
     const dejaMontre = N[3] === 1 && pauseAgent.vitrineTitre() && E.agent === a && E.skin === skin;
@@ -256,7 +256,7 @@ export async function creerAccueil({ base = '/' } = {}) {
       racine.style.display = '';
       N[2] = 1;
     }
-    pauseAgent.openVitrine(a, { cadre: 'titre', verrou: false, toile });
+    pauseAgent.openVitrine(a, { cadre: 'titre', verrou: false, toile, skin });
     N[4] = -1; // classe d'attente relue à la prochaine image
   }
 

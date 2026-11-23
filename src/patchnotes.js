@@ -4,8 +4,21 @@
 // Changer `version` rallume la pastille « NOUVEAU » chez tous les joueurs (PATCHNOTES_UI.cleVue).
 // Sources : git log et ARCHITECTURE.md (plan addictif, étapes 1 à 4).
 export const PATCHNOTES = {
-  version: '0.5.17',
+  version: '0.5.18',
   entrees: [
+    {
+      version: '0.5.18',
+      date: '23/11/2026',
+      titre: 'Agent de l’ombre',
+      lignes: [
+        'Le skin « Agent de l’ombre » du Shinobi prend vie : cornes, croix carmin à la place des yeux, écharpe carmin.',
+        'Sa longue cape noire s’ouvre en lanières à bout carmin et flotte derrière lui, sous son katana.',
+        'Quand il court, une fumée noire s’échappe de sa cape et une brume légère le suit au sol.',
+        'En Graphismes « Basse », la brume disparaît et la fumée est réduite de moitié.',
+        'Verrouillé, le skin montre sa propre silhouette dans la fiche des agents.',
+        'Toujours à gagner : détruisez le boss de rang 2 (vague 10) avec le Shinobi.',
+      ],
+    },
     {
       version: '0.5.17',
       date: '23/11/2026',

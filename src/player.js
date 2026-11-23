@@ -6,7 +6,7 @@
 // La simulation (P) ne change pas : seul le dessin se sépare (P.rot reste le cap du jeu).
 import { ACTION, PALETTE, PLAYER, SFX, WORLD } from './config.js';
 import { P, PAREFEU_F, mods } from './state.js';
-import { AGENT, AGENTS } from './config.js'; // § E2.D : teinte d'accent et passif « Réflexe » de l'agent
+import { AGENT, AGENTS, SKIN_BASE } from './config.js'; // § E2.D : teinte d'accent et passif « Réflexe » de l'agent
 import { REGLAGES } from './config.js'; // § E5.AB.14 : clic pour avancer façon LoL (REGLAGES.souris)
 import { run } from './state.js';
 import * as heros from './anim/heros-anim.js';
@@ -51,7 +51,10 @@ let modele = null; // données du modèle Blender une fois posé (setModele) ; n
 // posé par poserAgent() quand run.agent change — hors combat seulement (setModele, reset)
 // § E5.K (18/11) : SEUL le modèle de l'agent choisi est en mémoire — les autres entrées valent null tant qu'ils ne sont
 // pas choisis (main.js les charge à la demande : ajouterModeleAgent, poserAgentCourant libère les autres)
-let modeles = null; // données des modèles chargés, dans l'ordre de AGENTS (null : pas chargé)
+let modeles = null; // modèles chargés : par agent (ordre de AGENTS), { [skin]: données } (null : pas chargé)
+let skinPose = SKIN_BASE; // skin du modèle posé (agentPose)
+let skinVoulu = SKIN_BASE; // skin que main.js veut sur l'agent de la partie (meta.skinEffectif, repli compris)
+const skinsEchec = new Set(); // 'agent:skin' dont le fichier ne charge pas : le modèle de base les remplace
 let agentPose = -1; // agent dont le modèle est posé (−1 : aucun)
 const lastDashMul = new Float64Array(1); // mods.dashCdMul au dernier onModsChanged
 // § E5.AB.14 — mode « Vue fixe » (clic droit façon LoL, code de 0.5.7) : [0] cible active (0 / 1), [1] x, [2] z, [3] distance
@@ -98,13 +101,16 @@ export function init(context) {
  * AGENTS (défaut : heros.glb pour tous). Le modèle de l'agent courant est posé.
  */
 export function setModele(donnees, agents = null) {
-  modeles = agents ? agents.slice() : AGENTS.map(() => donnees);
+  modeles = AGENTS.map(() => ({}));
+  if (agents) {
+    for (let a = 0; a < agents.length; a++) if (agents[a]) modeles[a][agents[a].skin || SKIN_BASE] = agents[a];
+  } else for (let a = 0; a < AGENTS.length; a++) modeles[a][SKIN_BASE] = donnees;
   // modèle allégé à texture cuite (17/11, userData.cuit) : atlas + lueurs en alpha, posé par poserAgent (une image par
   // agent) ; sinon l'image des armes bakées (aTex = 1 seulement)
   if (!(donnees && donnees.userData && donnees.userData.cuit)) appliquerTexturesArmes(materiau, donnees && donnees.textures);
   // atlas de chaque agent préparés et envoyés au GPU maintenant (un changement d'agent n'en charge plus aucun)
-  for (const m of modeles) {
-    if (!m || !m.textures || !(m.userData && m.userData.cuit)) continue;
+  for (const m of toutesDonnees()) {
+    if (!m.textures || !(m.userData && m.userData.cuit)) continue;
     preparerTexturesModele(m.textures);
     ctx.render.chargerTexture(m.textures.map);
     ctx.render.chargerTexture(m.textures.normalMap);
@@ -112,37 +118,72 @@ export function setModele(donnees, agents = null) {
   agentPose = -1;
   couleurs0 = null;
   // § E5.K : l'agent de la partie s'il est chargé, sinon le seul chargé (main.js charge ensuite celui de run.agent)
-  poserAgent(modeles[run.agent] ? run.agent : modeles.findIndex(Boolean));
+  if (modeles[run.agent][skinVoulu]) poserAgent(run.agent, skinVoulu);
+  else {
+    const a = modeles.findIndex((m) => Object.keys(m).length > 0);
+    if (a >= 0) poserAgent(a, Object.keys(modeles[a])[0]);
+  }
   heros.setActif(true);
 }
 
-/** § E5.K : le modèle de l'agent a est chargé (vrai) ; faux avant l'arrivée des modèles ou s'il n'est pas chargé. */
-export function aModeleAgent(a) {
-  return modeles !== null && !!modeles[a];
+/** Données de tous les modèles chargés (hors image : préparation des atlas). */
+function toutesDonnees() {
+  const l = [];
+  for (const m of modeles) for (const k of Object.keys(m)) if (m[k]) l.push(m[k]);
+  return l;
+}
+
+/** Skin voulu sur l'agent de la partie, repli sur la base si son fichier a échoué (main.js : meta.skinEffectif). */
+export function vouloirSkin(skin) {
+  skinVoulu = skin;
+}
+
+/** Skin réellement montrable : `skin`, ou 'base' si le fichier de ce skin ne charge pas pour l'agent a. */
+export function skinPour(a, skin) {
+  return skin !== SKIN_BASE && skinsEchec.has(a + ':' + skin) ? SKIN_BASE : skin;
+}
+
+/** Le modèle du skin de l'agent a est illisible : plus jamais demandé (repli sur la base). */
+export function signalerEchecSkin(a, skin) {
+  if (skin !== SKIN_BASE) skinsEchec.add(a + ':' + skin);
+}
+
+/** Skin du modèle posé sur le héros ('base' tant que rien n'est posé). */
+export function skinCourant() {
+  return skinPose;
+}
+
+/** § E5.K : le modèle de l'agent a (skin donné, base par défaut) est chargé (vrai) ; faux avant l'arrivée des modèles. */
+export function aModeleAgent(a, skin = SKIN_BASE) {
+  return modeles !== null && !!modeles[a] && !!modeles[a][skin];
 }
 
 /**
- * § E5.K : modèle de l'agent a arrivé à la demande (main.js, hors combat) — rangé, pas posé (poserAgentCourant). Faux
- * avant l'arrivée des modèles du démarrage.
+ * § E5.K : modèle de l'agent a (et de son skin) arrivé à la demande (main.js, hors combat) — rangé, pas posé
+ * (poserAgentCourant). Faux avant l'arrivée des modèles du démarrage.
  */
-export function ajouterModeleAgent(a, donnees) {
+export function ajouterModeleAgent(a, skin, donnees) {
   if (modeles === null || !(a >= 0 && a < AGENTS.length) || !donnees) return false;
-  if (modeles[a] && modeles[a] !== donnees) libererModele(a);
-  modeles[a] = donnees;
+  if (modeles[a][skin] && modeles[a][skin] !== donnees) libererModele(a, skin);
+  modeles[a][skin] = donnees;
   return true;
 }
 
 /**
- * § E5.K : pose le modèle de run.agent (hors combat : titre, écran Agents, Noyau) puis libère tous les autres, sauf
- * `garder` (l'agent montré par la fiche de l'écran Agents, -1 : aucun). Rend les agents libérés (main.js oublie leur
- * glTF). Rien si le modèle de run.agent n'est pas chargé.
+ * § E5.K : pose le modèle de run.agent (son skin voulu ; hors combat : titre, écran Agents, Noyau) puis libère tous les
+ * autres, sauf `garder` / `gardeSkin` (le modèle montré par la fiche de l'écran Agents, -1 : aucun). Rend les modèles
+ * libérés ({ a, skin }, main.js oublie leur glTF). Rien si le modèle de run.agent n'est pas chargé.
  */
-export function poserAgentCourant(garder = -1) {
-  if (!aModeleAgent(run.agent)) return [];
-  poserAgent(run.agent);
+export function poserAgentCourant(garder = -1, gardeSkin = SKIN_BASE) {
+  if (!aModeleAgent(run.agent, skinVoulu)) return [];
+  poserAgent(run.agent, skinVoulu);
   teinter(AGENTS[run.agent].accent);
   const libres = [];
-  for (let a = 0; a < modeles.length; a++) if (a !== agentPose && a !== garder && libererModele(a)) libres.push(a);
+  for (let a = 0; a < modeles.length; a++) {
+    for (const k of Object.keys(modeles[a])) {
+      if (!(a === garder && k === gardeSkin) && libererModele(a, k)) libres.push({ a, skin: k });
+    }
+  }
   return libres;
 }
 
@@ -152,10 +193,10 @@ export function poserAgentCourant(garder = -1) {
  * armes est PARTAGÉE par tous les agents (pieces.js atlasArmes) et par le héros de l'écran titre : jamais libérée.
  * Vrai si un modèle a été libéré.
  */
-export function libererModele(a) {
-  if (modeles === null || a === agentPose || !modeles[a]) return false;
-  const d = modeles[a];
-  modeles[a] = null;
+export function libererModele(a, skin = SKIN_BASE) {
+  if (modeles === null || (a === agentPose && skin === skinPose) || !modeles[a] || !modeles[a][skin]) return false;
+  const d = modeles[a][skin];
+  delete modeles[a][skin];
   if (a === AGENT.ECLAIREUR) couleurs0 = null; // couleurs de CE fichier : relues si l'Éclaireur revient
   if (ctx && ctx.pauseAgent && ctx.pauseAgent.oublier) ctx.pauseAgent.oublier(d.geometry);
   d.geometry.dispose();
@@ -163,9 +204,9 @@ export function libererModele(a) {
 }
 
 /** § E4.L.1 : données du modèle de l'agent a (pièces, vides, géométrie), null avant l'arrivée des modèles. */
-export function modeleAgent(a) {
-  if (modeles === null) return null;
-  return modeles[a] || null; // § E5.K : null si l'agent n'est pas chargé
+export function modeleAgent(a, skin = SKIN_BASE) {
+  if (modeles === null || !modeles[a]) return null;
+  return modeles[a][skin] || null; // § E5.K : null si l'agent n'est pas chargé
 }
 
 /**
@@ -173,17 +214,18 @@ export function modeleAgent(a) {
  * sans cape), modules d'armes ; l'ancien héros est libéré (heros.liberer). Hors combat seulement : appelé par
  * setModele et reset (début de partie, Rejouer, retour au titre).
  */
-function poserAgent(a) {
-  if (modeles === null || a === agentPose || !modeles[a]) return; // § E5.K : pas chargé → l'agent posé reste
-  const donnees = modeles[a];
+function poserAgent(a, skin = SKIN_BASE) {
+  if (modeles === null || (a === agentPose && skin === skinPose) || !modeles[a] || !modeles[a][skin]) return; // § E5.K : pas chargé → l'agent posé reste
+  const donnees = modeles[a][skin];
   // modèle cuit : l'atlas de CET agent sur le matériau partagé (hors combat ; même programme d'un agent à l'autre)
   if (donnees.userData && donnees.userData.cuit) appliquerTexturesModele(materiau, donnees.textures);
-  heros.init({ scene: ctx.scene, donnees, materiau, avecCape: AGENTS[a].cape !== false, avecTissus: !!AGENTS[a].tissus, agent: a }); // § E5.I : tissus du Shinobi // SkinnedMesh « joueur », silhouette, images rémanentes, cape
+  heros.init({ scene: ctx.scene, donnees, materiau, avecCape: AGENTS[a].cape !== false, avecTissus: !!AGENTS[a].tissus, agent: a, skin }); // § E5.I : tissus du Shinobi // SkinnedMesh « joueur », silhouette, images rémanentes, cape
   armes.init({ scene: ctx.scene, materiau }); // modules d'armes, bouches, tourelles, éclairs
   armes.ACTIF[0] = 1; // les tirs partent des bouches (weapons.js lit armes.api)
   ombreFrappe.lier(a); // § E5.AM : l'ombre partage la géométrie et le squelette de CE héros (avant le préchauffage)
   modele = donnees;
   agentPose = a;
+  skinPose = skin;
   accentPose = -1;
   // § E2.D : couleurs du fichier de l'Éclaireur, gardées (seul modèle teinté : les agents ont leur accent dans le .glb)
   if (a === AGENT.ECLAIREUR && couleurs0 === null) couleurs0 = new Float32Array(donnees.geometry.attributes.color.array);
@@ -612,7 +654,9 @@ export function inspect(out) {
   out.modele = modele !== null; // modèle Blender posé (§ Z quinquies)
   out.accent = accentPose; // § E2.D : teinte posée sur les sommets émissifs (−1 : pas de modèle)
   out.agentModele = agentPose; // agent dont le modèle est posé (−1 : aucun)
-  out.modelesCharges = modeles === null ? [] : modeles.map(Boolean); // § E5.K : un seul vrai hors changement d'agent
+  out.modelesCharges = modeles === null ? [] : modeles.map((m) => Object.keys(m).length > 0);
+  out.modelesSkins = modeles === null ? [] : modeles.flatMap((m, a) => Object.keys(m).map((k) => a + ':' + k));
+  out.skinModele = skinPose; // § E5.K : un seul vrai hors changement d'agent
   out.sommets = modele !== null ? modele.geometry.attributes.position.count : 0;
   out.dashCut = dashCut[1]; // § E2.D : secondes de recharge du dash retirées par « Réflexe » depuis le début de la partie
   out.dashCutBucket = dashCut[0];

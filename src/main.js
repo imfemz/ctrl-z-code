@@ -49,7 +49,7 @@ import * as debug from './debug.js';
 import * as chests from './chests.js'; // § E2.C : coffres, roulette
 import * as disquette from './disquette.js'; // § E4.Q : Sauvegarde lâchée par un boss (disquette au sol)
 import { CHESTS, PICK } from './config.js'; // § E2.C
-import { charger as chargerModeles, chargerAgent, oublierAgent } from './rendu/modeles.js';
+import { charger as chargerModeles, chargerAgent, oublierAgent, avertirSkin } from './rendu/modeles.js';
 import * as memoire from './memoire.js'; // § E5.K : attente du modèle de l'agent, contexte WebGL perdu
 import * as incident from './incident.js'; // § E5.X2 : erreur pendant une image, sauvegarde abîmée
 import { MEMOIRE } from './config.js'; // § E5.X2 : textes de l'avis de sauvegarde
@@ -58,6 +58,7 @@ import { creerAccueil } from './menu/accueil.js'; // écran titre peint (Écran 
 import * as agents from './agents.js'; // § E2.D : les trois agents
 import * as items from './items.js'; // § E2.F : objets passifs
 import * as domeParefeu from './vfx/dome-parefeu.js'; // § E5.B : dôme hexagonal du Pare-feu (1 appel de dessin quand on l'a)
+import * as brumeOmbre from './vfx/brume-ombre.js'; // skin ombre (tâche 4) : fumée aux pointes de la cape + sillage de brume
 import * as coqueReactive from './vfx/coque-reactive.js'; // § E5.H : visuel de la Coque réactive (1 appel de dessin quand on l'a)
 import * as elites from './elites.js'; // § E3.A : élites à modificateurs
 import * as barres from './barres-vie.js'; // § E4.H : petite barre de vie des gros robots
@@ -68,7 +69,7 @@ import { TPRET } from './terminal.js';
 import * as props from './props.js'; // § E3.C : décors cassables
 import * as inviteInteragir from './invite-interagir.js'; // § E5.C : invite « touche » au-dessus de la borne prête
 import { ACTION_INTERACT } from './config.js'; // § E5.C : action « Interagir » (coup de pied sur une borne)
-import { skinsDe } from './config.js'; // Écran Agents : skin visé dans la fiche
+import { skinsDe, SKIN_BASE } from './config.js'; // Écran Agents : skin visé dans la fiche
 import { ACTION_FICHE } from './config.js'; // menus « Pile » (19/11) : Tab = fiche de l'agent
 import * as utilities from './utilities.js'; // § E3.C : utilitaires
 import * as ramassage from './ramassage.js'; // § E5.E.2 : compteurs de ramassage (lus par le récap de ui.js)
@@ -156,7 +157,7 @@ actions.hubReset = hubReset;
 actions.hubGuard = hubGuard;
 // § E5.K (tests, debug.js) : promesse de la lecture en cours du modèle de run.agent (null : rien en lecture). Elle se résout
 // à l'arrivée des données ; elles sont posées par l'image suivante (agentsTraiter).
-actions.attenteAgent = () => agentsPromesses[run.agent];
+actions.attenteAgent = () => agentsPromesses[creneau(run.agent, skinHeros(run.agent))];
 
 const ctx = {
   canvas: document.getElementById('game'),
@@ -201,6 +202,7 @@ const agentView = { vue: 'grille', origine: 'titre', agent: 0, skinVise: null, b
 // Écran Agents (tâche 6) : agent montré par la vitrine 3D de la fiche (-1 : aucune). Son modèle est lu s'il ne l'est pas
 // (§ E5.K) et GARDÉ tant que sa fiche est ouverte, même s'il n'est pas l'agent de la partie ; libéré à sa fermeture.
 let agentVitrine = -1;
+let skinVitrine = SKIN_BASE; // skin du modèle montré par la fiche (agentVitrine) : le skin visé s'il est débloqué, sinon la base
 const ONGLET_AGENTS = HUB.onglets.findIndex((o) => o.key === 'agents');
 const ONGLET_COLLECTION = HUB.onglets.findIndex((o) => o.key === 'collection');
 const hubView = { best: 0, agent: 0, tab: ONGLET_COLLECTION }; // § E4.B : vue du hub (vague record, agent de départ, onglet à l'ouverture)
@@ -245,9 +247,14 @@ let departDemande = false; // « Jouer » demandé pendant le chargement : la pa
 const modelesInfo = { ms: 0, erreur: '' };
 // § E5.K : un seul agent détaillé en mémoire. Un autre agent est lu au moment où il est choisi (demanderModeleAgent) ;
 // ses données arrivent dans agentsArrives (traitées au début d'une image, agentsTraiter), l'ancien est alors libéré.
-const agentsEnLecture = new Uint8Array(AGENT_COUNT); // 1 : lecture en cours
-const agentsArrives = []; // { a, d, erreur } en attente de traitement
-const agentsPromesses = new Array(AGENT_COUNT).fill(null); // lecture en cours (résolue à l'arrivée, avant agentsTraiter)
+const SKINS_MAX = 4; // skins lisibles en même temps par agent (créneaux de lecture)
+for (const ag of AGENTS) {
+  // garde d'init : un agent qui aurait plus de skins que de créneaux de lecture se marcherait dessus (créneau agent × skin)
+  if (skinsDe(ag.key).length > SKINS_MAX) console.error(`SKINS_MAX (${SKINS_MAX}) trop petit : l'agent ${ag.key} a ${skinsDe(ag.key).length} skins (base comprise)`);
+}
+const agentsEnLecture = new Uint8Array(AGENT_COUNT * SKINS_MAX); // 1 : lecture en cours (créneau agent × skin)
+const agentsArrives = []; // { a, skin, d, erreur } en attente de traitement
+const agentsPromesses = new Array(AGENT_COUNT * SKINS_MAX).fill(null); // lecture en cours (résolue à l'arrivée, avant agentsTraiter)
 let lancementDemande = null; // état (STATE.*) où « Jouer » attend le modèle de run.agent ; null : rien en attente
 const agentsInfo = { lus: 0, liberes: 0, ms: 0 }; // tests (§ E5.K)
 
@@ -538,6 +545,7 @@ function resetAll() {
   items.reset(); // § E2.F : plus aucun objet — après agents.reset (part des objets dans mods), avant player.reset
   domeParefeu.reset(); // § E5.B : plus de coup arrêté en mémoire
   coqueReactive.reset(); // § E5.H : plus d'onde ni de fenêtre en mémoire
+  brumeOmbre.reset(); // skin ombre : ni fumée ni brume d'une partie précédente
   camera.remettreLacet(); // § E5.AB : lacet d'origine AVANT player.reset (le héros part face au haut de l'écran)
   player.reset();
   soinHeros.reset(); // § E5.Q (B14)
@@ -753,12 +761,15 @@ function agentsOuvrir(origine, a, skinKey) {
  */
 function ficheVitrine() {
   const a = agentView.agent;
-  if (agentVitrine !== a) libererVitrine();
-  agentVitrine = a;
-  lireModele(a);
   const k = AGENTS[a].key;
   const verrou = meta.agentVerrouille(a) || !meta.skinDebloque(k, agentView.skinVise);
-  pauseAgent.openVitrine(a, { cadre: 'fiche', verrou, toile: ui.agentsToile() });
+  // skin verrouillé : jamais son modèle (silhouette sur celui de l'agent) ; débloqué : le skin visé, repli compris
+  const skin = verrou ? SKIN_BASE : player.skinPour(a, agentView.skinVise);
+  if (agentVitrine !== a || skinVitrine !== skin) libererVitrine();
+  agentVitrine = a;
+  skinVitrine = skin;
+  lireModele(a, skin);
+  pauseAgent.openVitrine(a, { cadre: 'fiche', verrou, toile: ui.agentsToile(), skin });
 }
 
 /** Fiche fermée (retour à la grille, partie lancée) : vitrine fermée, modèle de son agent libéré s'il n'est pas celui de la partie. */
@@ -766,14 +777,16 @@ function fermerVitrine() {
   pauseAgent.closeVitrine();
   libererVitrine();
   agentVitrine = -1;
+  skinVitrine = SKIN_BASE;
+  demanderModeleAgent(); // le skin choisi dans la fiche : le modèle de l'agent de la partie le porte (titre, partie)
 }
 
 /** § E5.K : le modèle gardé pour la fiche (agent ≠ celui de la partie) est rendu (données, puis glTF du cache). */
 function libererVitrine() {
   const a = agentVitrine;
-  if (a < 0 || a === run.agent) return;
-  if (player.libererModele(a)) {
-    oublierAgent(a);
+  if (a < 0) return;
+  if (player.libererModele(a, skinVitrine)) { // jamais le modèle posé sur le héros (libererModele refuse)
+    oublierAgent(a, undefined, skinVitrine);
     agentsInfo.liberes++;
   }
 }
@@ -815,6 +828,7 @@ function agentSkin(a, skinKey) {
   audio.play(SFX.UI_CLICK);
   ui.refreshScreen(agentView);
   ficheVitrine();
+  if (choisi) demanderModeleAgent(); // le héros de la partie suit le skin choisi (lu hors combat, posé à son arrivée)
   return choisi;
 }
 
@@ -1900,6 +1914,21 @@ function simulate(dt) {
   shop.update(dt); // S11
   terminal.update(dt); // S11 bis (§ E5.V) : pose, présence, portée du terminal
   fx.update(dt); // S12
+  // skin « Agent de l'ombre » (tâche 4) : fumée aux pointes de la cape et brume au sol, seulement si le héros porte le skin
+  {
+    const E = brumeOmbre.ENTREE; // tableau typé : aucun flottant passé en argument (§ V)
+    const porte = player.skinCourant() === 'ombre';
+    E[0] = dt;
+    E[1] = porte ? 1 : 0;
+    E[2] = P.x;
+    E[3] = P.z;
+    E[4] = Math.sqrt(P.vx * P.vx + P.vz * P.vz);
+    E[5] = P.dashT > 0 ? 1 : 0;
+    E[6] = game.settings.graphismes === 'basse' || render.niveau() >= 3 ? 1 : 0; // Basse choisie, ou Auto retombé au niveau 3
+    E[7] = P.vx;
+    E[8] = P.vz;
+    brumeOmbre.update();
+  }
   enemies.flushDead(); // S13
 }
 
@@ -1994,6 +2023,7 @@ function runFrame(frameMs, realDt) {
   shop.sync();
   terminal.sync(); // § E5.V (22/11) : modèle du terminal (chute, posé, remontée)
   fx.sync();
+  brumeOmbre.sync(); // skin ombre : disques de brume et fumée
   silhouetteHeros.DTUS[0] = realDt * 1e6; // § E5.P (B1) : dt en µs, entier, lu dans un tableau typé (§ V)
   silhouetteHeros.sync(); // § E5.P (B1) : après player.sync (héros posé) et fx.sync, dessinée après les chiffres
   vfx.commit(); // VFX des projectiles (§ Z septies) : traînées, comptes, envoi des lots — avant world.sync qui les lit
@@ -2044,6 +2074,8 @@ function runFrame(frameMs, realDt) {
 function poserModeles() {
   const d = modelesArrives;
   modelesArrives = null;
+  if (d.skinEchoue) player.signalerEchecSkin(d.agent, d.skinEchoue); // le skin du départ ne charge pas : base
+  player.vouloirSkin(skinHeros(run.agent));
   player.setModele(d.heros, d.agents); // un modèle par agent (fusion agents-modeles), posé hors combat
   enemies.setModeles(d.robots);
   boss.setModele(d.boss.corps, d.boss.chaud, d.boss.complet); // après enemies : boss-anim reprend le modèle du drone
@@ -2052,33 +2084,47 @@ function poserModeles() {
   game.modeles = 'pret';
 }
 
+/** Créneau de lecture d'un modèle (agent × skin). */
+function creneau(a, skin) {
+  const i = skinsDe(AGENTS[a].key).indexOf(skin);
+  return a * SKINS_MAX + (i < 0 ? 0 : i);
+}
+
+/** Skin du héros de l'agent a : le skin effectif de la méta (choisi ET débloqué), sa base si son fichier ne charge pas. */
+function skinHeros(a) {
+  return player.skinPour(a, meta.skinEffectif(AGENTS[a].key));
+}
+
 /**
- * § E5.K : le modèle de run.agent est-il là ? Oui : il est posé (hors combat) et tous les autres sont libérés (vrai).
- * Non : sa lecture est lancée si elle ne l'est pas déjà (faux). Modèles du démarrage pas encore posés : faux.
+ * § E5.K : le modèle de run.agent (et de son skin effectif) est-il là ? Oui : il est posé (hors combat) et tous les autres
+ * sont libérés (vrai). Non : sa lecture est lancée si elle ne l'est pas déjà (faux). Modèles du démarrage pas encore posés : faux.
  */
 function demanderModeleAgent() {
   if (game.modeles !== 'pret') return false;
   const a = run.agent;
-  if (player.aModeleAgent(a)) {
+  const skin = skinHeros(a);
+  player.vouloirSkin(skin);
+  if (player.aModeleAgent(a, skin)) {
     poserAgentCourant();
     return true;
   }
-  lireModele(a);
+  lireModele(a, skin);
   return false;
 }
 
-/** § E5.K : lecture du modèle de l'agent a lancée s'il n'est ni chargé ni déjà en lecture (arrivée : agentsTraiter). */
-function lireModele(a) {
-  if (game.modeles !== 'pret' || player.aModeleAgent(a)) return;
-  if (agentsEnLecture[a] === 0) {
-    agentsEnLecture[a] = 1;
+/** § E5.K : lecture du modèle de l'agent a (skin donné) lancée s'il n'est ni chargé ni déjà en lecture (arrivée : agentsTraiter). */
+function lireModele(a, skin = SKIN_BASE) {
+  if (game.modeles !== 'pret' || player.aModeleAgent(a, skin)) return;
+  const c = creneau(a, skin);
+  if (agentsEnLecture[c] === 0) {
+    agentsEnLecture[c] = 1;
     const t0 = performance.now();
-    agentsPromesses[a] = chargerAgent(a).then(
+    agentsPromesses[c] = chargerAgent(a, undefined, skin).then(
       (d) => {
-        agentsArrives.push({ a, d, erreur: '', ms: performance.now() - t0 });
+        agentsArrives.push({ a, skin, d, erreur: '', ms: performance.now() - t0 });
       },
       (e) => {
-        agentsArrives.push({ a, d: null, erreur: String((e && e.message) || e), ms: 0 });
+        agentsArrives.push({ a, skin, d: null, erreur: String((e && e.message) || e), ms: 0 });
       },
     );
   }
@@ -2089,8 +2135,8 @@ function lireModele(a) {
  * sauf celui de la fiche ouverte de l'écran Agents (libéré à sa fermeture, libererVitrine).
  */
 function poserAgentCourant() {
-  const libres = player.poserAgentCourant(agentVitrine);
-  for (let i = 0; i < libres.length; i++) oublierAgent(libres[i]);
+  const libres = player.poserAgentCourant(agentVitrine, skinVitrine);
+  for (let i = 0; i < libres.length; i++) oublierAgent(libres[i].a, undefined, libres[i].skin);
   agentsInfo.liberes += libres.length;
 }
 
@@ -2098,37 +2144,58 @@ function poserAgentCourant() {
  * § E5.K : début d'une image, après l'arrivée du modèle d'un agent. Celui de run.agent : rangé, posé (les autres libérés),
  * préchauffé ; la partie demandée démarre. Celui de l'agent de la fiche ouverte (écran Agents) : rangé sans être posé, la
  * vitrine le montre à l'image suivante. Un modèle arrivé pour un agent qui n'est ni choisi ni montré est oublié.
+ * Un skin dont le fichier ne charge pas : un avertissement, le modèle de base le remplace (lu à sa place).
  */
 function agentsTraiter() {
   let pose = false;
+  let repli = false;
   while (agentsArrives.length > 0) {
     const r = agentsArrives.shift();
-    agentsEnLecture[r.a] = 0;
-    agentsPromesses[r.a] = null;
+    const c = creneau(r.a, r.skin);
+    agentsEnLecture[c] = 0;
+    agentsPromesses[c] = null;
     if (r.d === null) {
+      if (r.skin !== SKIN_BASE) {
+        avertirSkin(r.a, r.skin, r.erreur);
+        player.signalerEchecSkin(r.a, r.skin);
+        repli = true;
+        continue;
+      }
       console.error('Modèle de l’agent illisible :', r.erreur);
       if (r.a === run.agent && lancementDemande !== null) memoire.echecAgent(r.erreur);
       continue;
     }
-    if (r.a !== run.agent && r.a === agentVitrine && game.state === STATE.AGENT) {
-      player.ajouterModeleAgent(r.a, r.d); // fiche : gardé (non posé) tant qu'elle est ouverte
+    const heros = r.a === run.agent && r.skin === skinHeros(r.a);
+    if (!heros && r.a === agentVitrine && r.skin === skinVitrine && game.state === STATE.AGENT) {
+      player.ajouterModeleAgent(r.a, r.skin, r.d); // fiche : gardé (non posé) tant qu'elle est ouverte
       agentsInfo.lus++;
       agentsInfo.ms = r.ms;
       continue;
     }
-    if (r.a !== run.agent) {
+    if (!heros) {
       r.d.geometry.dispose();
-      oublierAgent(r.a);
+      oublierAgent(r.a, undefined, r.skin);
       continue;
     }
-    player.ajouterModeleAgent(r.a, r.d);
+    player.ajouterModeleAgent(r.a, r.skin, r.d);
     agentsInfo.lus++;
     agentsInfo.ms = r.ms;
     pose = true;
   }
-  if (!pose || !player.aModeleAgent(run.agent)) return;
-  const enCombat = !(game.state === STATE.TITLE || game.state === STATE.AGENT || game.state === STATE.HUB);
-  if (enCombat) return; // jamais en partie (la lecture n'est lancée que hors combat ; garde)
+  const horsCombat = game.state === STATE.TITLE || game.state === STATE.AGENT || game.state === STATE.HUB;
+  if (repli && horsCombat) {
+    // le modèle de base prend la place du skin illisible (héros de la partie, puis fiche ouverte) ; s'il est déjà là, il
+    // est posé tout de suite : « Jouer » pressé pendant la lecture du skin ne doit pas rester bloqué (pose = vrai)
+    if (demanderModeleAgent()) pose = true;
+    if (agentVitrine >= 0) {
+      const k = AGENTS[agentVitrine].key;
+      const verrou = meta.agentVerrouille(agentVitrine) || !meta.skinDebloque(k, agentView.skinVise);
+      const skin = verrou ? SKIN_BASE : player.skinPour(agentVitrine, agentView.skinVise);
+      if (skin !== skinVitrine) ficheVitrine();
+    }
+  }
+  if (!pose || !player.aModeleAgent(run.agent, skinHeros(run.agent))) return;
+  if (!horsCombat) return; // jamais en partie (la lecture n'est lancée que hors combat ; garde)
   poserAgentCourant();
   render.prewarm(); // géométrie du nouvel agent envoyée hors combat
   pauseAgent.prechauffer(); // portrait de la pause sur le modèle chargé
@@ -2149,7 +2216,7 @@ function modelesTraiter() {
   if (modelesArrives !== null) {
     poserModeles();
     demanderModeleAgent(); // § E5.K : agent de la partie ≠ celui lu au démarrage (verrouillé) → lu maintenant
-    if (agentVitrine >= 0) lireModele(agentVitrine); // fiche de l'écran Agents ouverte pendant le chargement
+    if (agentVitrine >= 0) lireModele(agentVitrine, skinVitrine); // fiche de l'écran Agents ouverte pendant le chargement
     prechaufferSansBloquer(); // 20/11 : les programmes des modèles compilés sans figer la page (puis prewarm + portrait)
   }
   tenterPublier();
@@ -2202,7 +2269,7 @@ export function menuIntegre() {
 async function boot() {
   // Modèles des unités (§ Z quinquies) : chargés en arrière-plan, en même temps que le décor ; l'écran titre s'affiche
   // sans les attendre. Lents : rien ne casse, « Jouer » attend ; absents ou illisibles : erreur affichée sur l'écran titre.
-  const modelesPromesse = chargerModeles(undefined, { agent: agentSauve() }); // § E5.K : l'agent choisi seulement
+  const modelesPromesse = chargerModeles(undefined, { agent: agentSauve() }); // la méta n'est pas lue : le skin choisi est lu ensuite (demanderModeleAgent) // § E5.K : l'agent choisi seulement
   modelesPromesse.then(
     (d) => {
       modelesArrives = d;
@@ -2292,6 +2359,7 @@ async function boot() {
     capsuleNouvelle = true; // § E3.C : la géométrie de la borne est envoyée par un préchauffage de plus, hors combat
   });
   fx.init(ctx);
+  brumeOmbre.init(ctx.scene); // skin ombre (tâche 4) : pool de brume et fumée, vides tant que le héros ne porte pas le skin
   soinHeros.init(ctx); // § E5.Q (B14) : après fx (le « +N » passe par fx.spawnHealNumberF)
   silhouetteHeros.init(ctx); // § E5.P (B1) : après fx.init (les chiffres d'abord dans la scène nette)
   verrou.init(ctx); // § E5.AB (après input.init : il écrit l'état du verrou dans input)

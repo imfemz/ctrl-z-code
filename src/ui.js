@@ -2566,7 +2566,10 @@ function aeSources() {
   const out = [VITRINE.fonds.grille, VITRINE.fonds.agents];
   for (let a = 0; a < AGENT_COUNT; a++) {
     const k = AGENTS[a].key;
-    for (const sk of skinsDe(k)) out.push(VITRINE.cartes(k, sk), VITRINE.vignettes(k, sk));
+    for (const sk of skinsDe(k)) {
+      out.push(VITRINE.cartes(k, sk), VITRINE.vignettes(k, sk));
+      if (sk !== 'base') out.push(VITRINE.vignettes(k, sk, { verrou: true })); // silhouette propre au skin
+    }
     out.push(VITRINE.cartes(k, 'base', { verrou: true }), VITRINE.vignettes(k, 'base', { verrou: true }));
   }
   return out;

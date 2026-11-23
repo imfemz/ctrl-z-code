@@ -23,9 +23,9 @@ import * as THREE from 'three';
 import { AGENTS, LISIBILITE_GUIDE, RENDER } from './config.js';
 import { P, run } from './state.js';
 import { FOULE, FOULE_R2 } from './enemies.js';
-import { getMesh } from './anim/heros-anim.js';
+import { getMesh, getTissusMesh } from './anim/heros-anim.js';
 import * as cape from './anim/cape.js'; // la cape (Éclaireur) et les tissus (Shinobi) font partie de la silhouette :
-import * as tissus from './anim/tissus.js'; // sans eux, la cape vue entre les jambes restait sombre dans l'aplat
+// sans eux, la cape vue entre les jambes restait sombre dans l'aplat ; tissus : le jeu du skin posé (heros-anim)
 import { entree as ENTREE_REPERES } from './anim/reperes.js'; // § E5.X6 (D14) : R1 par-dessus la foule quand la silhouette est allumée
 
 const R = LISIBILITE_GUIDE.silhouette;
@@ -41,7 +41,7 @@ let lie = null; // maillage du héros auquel la silhouette est liée
 let coul = null;
 let matCoul = null;
 // cape et tissus : maillages simples (géométrie dynamique, en coordonnées du monde), un aplat chacun
-const TISSUS = [cape.getMesh, tissus.getMesh];
+const TISSUS = [cape.getMesh, getTissusMesh];
 const tissuLie = [null, null];
 const tissuSil = [null, null];
 const matTissu = [null, null];

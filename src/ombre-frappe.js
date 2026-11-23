@@ -25,12 +25,12 @@
 import * as THREE from 'three';
 import { AGENTS, FRAPPE_OMBRE as FO } from './config.js';
 import { P, run } from './state.js';
-import { getMesh } from './anim/heros-anim.js';
+import { getMesh, getTissusMesh } from './anim/heros-anim.js';
 import * as cape from './anim/cape.js';
-import * as tissus from './anim/tissus.js';
 
 const NC = 1 + FO.trainee; // copies du corps : la tête (0), puis les images rémanentes
-const TISSUS = [cape.getMesh, tissus.getMesh];
+// tissus du JEU porté par le héros (skin ombre : tissus.js?ombre ; sinon tissus.js) — heros-anim.getTissusMesh
+const TISSUS = [cape.getMesh, getTissusMesh];
 /** Entrée de lancer(), écrite par weapons-agents : [0] x0, [1] z0 (départ = le héros), [2] x1, [3] z1 (bout). */
 export const OMBRE = new Float64Array(4);
 // [0] âge (s), [1] départ x, [2] z, [3] bout x, [4] z, [5] cos du lacet de la ligne, [6] sin

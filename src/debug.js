@@ -23,6 +23,7 @@ import * as vfx from './vfx/projectiles.js';
 import { LOOK as VFX_LOOK } from './vfx/look.js'; // 17/11 : look « pixel + deep glow » des VFX
 import * as meta from './meta.js'; // § E3.F : recettes découvertes (tests)
 import * as armesHeros from './anim/armes-heros.js';
+const skinsInfo = {}; // tests des skins : player.inspect
 import { idleInspect as herosIdleInspect, os as herosOs } from './anim/heros-anim.js'; // § E4.E.3 : Warrior Idle en partie
 
 let ctx = null;
@@ -123,6 +124,7 @@ export function init(context) {
     start: (agentId) => apresAgent(A.start(agentId)), // § E2.D : avec un identifiant d'agent, l'écran de choix est sauté
     pause: (vue) => A.pause(vue), // menus « Pile » : 'fiche' = l'inventaire (Tab), sinon le menu (Échap)
     pauseSurFocus: () => A.pauseSurFocus(true), // § E5.S (A18) : perte de focus simulée
+    setGraphismes: (k) => A.setGraphismes(k), // tâche 4 : 'auto' | 'elevee' | 'moyenne' | 'basse'
     setFlashs: (k) => A.setFlashs(k), // § E5.X5 : 'normaux' | 'reduits'
     provoquerErreur: (n) => A.provoquerErreur(n), // § E5.X2 : n images lèvent une erreur (filet de la boucle)
     resume: () => A.resume(),
@@ -648,6 +650,9 @@ export function init(context) {
     /** Skins (tâche 3) : skin porté et état de déblocage (lecture seule), et choix d'un skin. */
     skinsMeta: (a, s) => ({ choisi: meta.skinChoisi(a), debloque: meta.skinDebloque(a, s) }),
     skinChoisir: (a, s) => meta.choisirSkin(a, s),
+    /** Skin effectif (méta) d'un agent ; modèle posé sur le héros (skin, présence d'un os) ; modèles rangés ('agent:skin'). */
+    skinEffectif: (a) => meta.skinEffectif(a),
+    skinHeros: (os) => ({ skin: ctx.player.skinCourant(), os: os ? !!herosOs(os) : null, charges: (ctx.player.inspect(skinsInfo), skinsInfo.modelesSkins.slice()) }),
     metaCycles: (n) => ctx.meta.debugSetCycles(n),
     metaForSale: () => ctx.meta.forSale([]),
     metaProgress: (s) => ctx.defis.progress(s, {}),

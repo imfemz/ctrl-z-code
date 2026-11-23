@@ -150,7 +150,7 @@ export async function creerHeros({ scene, base, solY, camera, evenement }) {
     return b;
   });
   pieces.forEach((p, i) => {
-    const haut = p.parent < 0 && /^(bras_|tete|tourelle_)/.test(p.nom);
+    const haut = p.parent < 0 && /^(bras_|tete|tourelle_|col_echarpe$)/.test(p.nom);
     const parent = p.parent >= 0 ? objs[p.parent] : haut ? buste : racine;
     const pp = p.parent >= 0 ? pieces[p.parent].pivot : haut ? [0, TAILLE, 0] : [0, HANCHE, 0];
     objs[i].position.set(p.pivot[0] - pp[0], p.pivot[1] - pp[1], p.pivot[2] - pp[2]);

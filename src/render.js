@@ -780,6 +780,11 @@ export function commit(mesh, count) {
   }
 }
 
+/** Niveau de qualité courant (0 le meilleur ; 3 = Basse). Lu chaque image : aucune allocation (≠ inspect). */
+export function niveau() {
+  return level;
+}
+
 export function inspect(out) {
   out.calls = lastCalls;
   out.triangles = lastTriangles;

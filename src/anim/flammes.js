@@ -17,8 +17,12 @@
 // (setEmetteur, tableaux typés) ; flammes.sync() avant le rendu. Clés : ANIM.flammes → RENDER.flames / BOSS.phase2.flames.
 import * as THREE from 'three';
 import { ANIM } from './reglages.js';
+import { SKIN_FX } from '../config.js';
 
-const F = ANIM.flammes;
+// 2e instance (`flammes.js?ombre`, skin « Agent de l'ombre ») : module distinct (autres tableaux, autre maillage), réglages
+// de SKIN_FX.ombre.fumee.flammes, fumée noire fine sans feu. Le singleton du boss (`flammes.js`) ne change pas.
+const OMBRE = import.meta.url.includes('?ombre');
+const F = OMBRE ? SKIN_FX.ombre.fumee.flammes : ANIM.flammes;
 const CAP = F.cap;
 const H = 1 / F.hz;
 const px = new Float32Array(CAP);
@@ -33,7 +37,7 @@ const taille = new Float32Array(CAP);
 const graine = new Float32Array(CAP);
 const fumee = new Uint8Array(CAP); // 1 = née fumée (pas de feu)
 // émetteurs : x, y, z, vx, vy, vz (vitesse du porteur), débit (particules/s), genre (0 feu, 1 fumée), rayon, poussée
-export const NE = 8;
+export const NE = OMBRE ? F.ne : 8;
 export const EM = new Float32Array(NE * 10);
 const accum = new Float64Array(NE);
 const S = new Float64Array(4); // [temps accumulé, temps simulé, numéro de particule, prochain emplacement]
@@ -84,6 +88,16 @@ const FRAG_FUM = `varying vec4 vP; varying vec2 vUv;
     vec3 c = mix( vec3( 0.07, 0.065, 0.07 ), vec3( 0.32, 0.12, 0.06 ), smoothstep( 0.2, 0.45, vP.y ) );
     gl_FragColor = vec4( c, m * vP.z );
   }`;
+// fumée du skin ombre : teinte unie (SKIN_FX.ombre.fumee.couleur, linéarisée par le seuil du shader : couleur écran)
+const FRAG_FUM_OMBRE = `varying vec4 vP; varying vec2 vUv; uniform vec3 uCouleur;
+  void main() {
+    vec2 q = vUv - 0.5;
+    float a = atan( q.y, q.x ); float r = length( q ) * 2.0;
+    float lobe = 0.9 + 0.04 * sin( a * 3.0 + vP.w * 9.0 ) + 0.03 * sin( a * 5.0 - vP.w * 4.0 );
+    float m = smoothstep( lobe, 0.0, r );
+    m = pow( m, 0.6 );
+    gl_FragColor = vec4( uCouleur, m * vP.z );
+  }`;
 
 function maillage(frag, additif, nom) {
   const g = new THREE.PlaneGeometry(1, 1);
@@ -92,7 +106,14 @@ function maillage(frag, additif, nom) {
   g.setAttribute('aP', a);
   const m = new THREE.InstancedMesh(
     g,
-    new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: frag, transparent: true, depthWrite: false, blending: additif ? THREE.AdditiveBlending : THREE.NormalBlending }),
+    new THREE.ShaderMaterial({
+      vertexShader: VERT,
+      fragmentShader: frag,
+      uniforms: OMBRE ? { uCouleur: { value: new THREE.Color(SKIN_FX.ombre.fumee.couleur) } } : {},
+      transparent: true,
+      depthWrite: false,
+      blending: additif ? THREE.AdditiveBlending : THREE.NormalBlending,
+    }),
     CAP,
   );
   m.name = nom;
@@ -103,10 +124,11 @@ function maillage(frag, additif, nom) {
 }
 
 export function init(scene) {
-  [fum, aFum] = maillage(FRAG_FUM, false, 'flammes-fumee');
-  [feu, aFeu] = maillage(FRAG_FEU, true, 'flammes-feu');
-  fum.renderOrder = 4;
+  [fum, aFum] = maillage(OMBRE ? FRAG_FUM_OMBRE : FRAG_FUM, false, OMBRE ? 'fumee-ombre' : 'flammes-fumee');
+  [feu, aFeu] = maillage(FRAG_FEU, true, OMBRE ? 'fumee-ombre-feu' : 'flammes-feu');
+  fum.renderOrder = OMBRE ? SKIN_FX.ombre.fumee.ordre : 4;
   feu.renderOrder = 5;
+  if (OMBRE) feu.visible = false; // jamais de feu (count reste 0) : aucun appel de dessin
   scene.add(fum);
   scene.add(feu);
   reset();
@@ -282,7 +304,9 @@ export function sync() {
 }
 
 export function setVisible(v) {
-  if (feu) feu.visible = fum.visible = !!v;
+  if (!feu) return;
+  fum.visible = !!v;
+  feu.visible = OMBRE ? false : !!v;
 }
 
 export function inspect(out) {
@@ -291,4 +315,8 @@ export function inspect(out) {
   out.particules = n;
   out.feu = feu ? feu.count : 0;
   out.fumee = fum ? fum.count : 0;
+  out.emises = S[2]; // particules nées depuis le début (tests)
+  let om = 0; // opacité maximale écrite à la dernière sync (tests)
+  if (aFum) for (let i = 0; i < fum.count; i++) if (aFum.array[i * 4 + 2] > om) om = aFum.array[i * 4 + 2];
+  out.opaciteMax = om;
 }

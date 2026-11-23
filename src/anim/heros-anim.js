@@ -52,7 +52,9 @@ import { P, run } from '../state.js';
 import { AGENT, ANIM_AGENTS } from '../config.js'; // § E5.F : course du Bastion, gestes en poses clés
 import { ANIM } from './reglages.js';
 import * as cape from './cape.js';
-import * as tissus from './tissus.js'; // § E5.I : les trois tissus du Shinobi (à la place de la cape)
+import * as tissusBase from './tissus.js'; // § E5.I : les trois tissus du Shinobi (à la place de la cape)
+import * as tissusOmbre from './tissus.js?ombre'; // skin ombre (tâche 3) : cape gothique, pan et écharpe carmin — autre module
+let tissus = tissusBase; // jeu de tissus du héros posé (init : celui de son skin ; l'autre est coupé)
 import { surfaceDos, profilBras, profilJambe, rayonsJambes, axeKatana } from './dos-reel.js'; // skins, tâche 2 : cape et tissus posés sur le dos réel du modèle, bras réels
 import { katanaEnMain } from './combos.js'; // § E5.I : katana au dos ou en main, état de l'image
 import { hauteur as dashHauteur } from '../dash-agents.js';
@@ -183,6 +185,10 @@ let rootBone = null; // § E4.O : os racine (bassin) — écrit seulement par le
 export function os(nom) {
   return nom === null ? racine : bones[nom] || null;
 }
+/** Maillage des tissus du héros posé (jeu de son skin), null avant le premier : silhouette-heros. */
+export function getTissusMesh() {
+  return tissus.getMesh();
+}
 /** Pièces et nœuds vides du .glb chargé (pieces.js). */
 export function donneesHeros() {
   return donneesGlb;
@@ -265,7 +271,7 @@ export function liberer() {
  * l'ancien joueur dans le prototype) ; avecCape : false pour un agent sans cape (AGENTS[].cape, le Bastion).
  * Rappelable après liberer() avec un autre modèle (mêmes pièces : heros.glb ou agent-<nom>.glb).
  */
-export function init({ scene, donnees, materiau, avecCape = true, avecTissus = false, agent = run.agent }) {
+export function init({ scene, donnees, materiau, avecCape = true, avecTissus = false, agent = run.agent, skin = 'base' }) {
   if (mesh !== null) liberer();
   // § E5.F : course « bulldozer » du Bastion (run.agent est l'agent posé : player.poserAgent(run.agent))
   STY.fill(0);
@@ -331,7 +337,7 @@ export function init({ scene, donnees, materiau, avecCape = true, avecTissus = f
     // le haut du corps : bras, tête, tourelles d'épaule, katana porté dans le dos (17/11 au soir : sur le bassin, il
     // restait en place quand le buste tourne de 70° pour viser) ; sentinelle et grosse tourelle portées entre les
     // omoplates (§ E5.F.13 : pièces dessinées à 1,36–1,81 m, sur le bassin elles ne suivaient pas la torsion)
-    const haut = p.parent < 0 && /^(bras_|tete|tourelle_|arme_katana(_evo)?$|arme_sentinelle(_evo)?$|arme_canon(_evo)?$)/.test(p.nom);
+    const haut = p.parent < 0 && /^(bras_|tete|tourelle_|col_echarpe$|arme_katana(_evo)?$|arme_sentinelle(_evo)?$|arme_canon(_evo)?$)/.test(p.nom);
     const parent = p.parent >= 0 ? objs[p.parent] : haut ? buste : root;
     const pp = p.parent >= 0 ? pieces[p.parent].pivot : [0, 0, 0];
     objs[i].position.set(p.pivot[0] - pp[0], p.pivot[1] - pp[1], p.pivot[2] - pp[2]);
@@ -449,8 +455,15 @@ export function init({ scene, donnees, materiau, avecCape = true, avecTissus = f
     for (let i = 0; i < 3; i++) TIS_PIV[i] = pc ? pc.pivot[i] : 0;
   }
   S_TIS[0] = avecTissus ? 1 : 0;
+  // skin ombre (tâche 3) : tissus.js?ombre (cape accrochée aux épaules, posée au repos sur le dos réel jambes comprises) ;
+  // tout autre skin : les tissus du Shinobi de base. L'autre jeu est coupé (sorti de la scène, tampons rendus).
+  const jeu = avecTissus && skin === 'ombre' ? tissusOmbre : tissusBase;
+  if (jeu !== tissus) {
+    tissus.couper();
+    tissus = jeu;
+  }
   // tissus : jambes LIBRES dans la surface (leurs capsules suivent la pose ; revue du 22/11)
-  if (avecTissus) tissus.init({ scene, dos, surface: surfaceDos(geometry, pieces, 'libres'), jambes: rayonsJambes(geometry, pieces, A.pied.capeLocal), katana: axeKatana(geometry, pieces), devant: surfaceDos(geometry, pieces, 'libres', 'devant') });
+  if (avecTissus) tissus.init({ scene, dos, surface: surfaceDos(geometry, pieces, 'libres'), jambes: rayonsJambes(geometry, pieces, A.pied.capeLocal), katana: axeKatana(geometry, pieces), devant: surfaceDos(geometry, pieces, 'libres', 'devant'), epaules: { g: vg, d: vd }, surfaceRepos: surface });
   else tissus.couper();
   reset();
   S[READY] = 1;
@@ -461,6 +474,11 @@ export function init({ scene, donnees, materiau, avecCape = true, avecTissus = f
 const S_TIS = new Int8Array(1);
 const TIS_PIV = new Float64Array(3);
 const TIS_ZERO = new Float64Array(3); // l'axe du katana est donné dans le repère du modèle (celui du buste)
+/** Pointes les plus basses de la cape du skin ombre en monde (9 × xyz dans out, Float32Array), leur nombre ; 0 sans la cape (autre skin, tissus coupés). Chaque image : aucune allocation. */
+export function pointesCape(out) {
+  return tissus === tissusOmbre ? tissusOmbre.pointes(out) : 0;
+}
+
 /** Matrice monde du bassin (os « corps », repère du modèle → monde) et katana au dos, pour tissus.update / reset. */
 function tissusEntree() {
   // katana au dos : porté (au dos ou en main) et pas en main D'APRÈS LE COMBO DE CETTE IMAGE — armes-heros n'en montre
@@ -758,6 +776,15 @@ function jambe(k, a, b, p) {
   t[o + 18] = c[o + 4];
   t[o + 19] = c[o + 5];
   t[o + 20] = 1;
+  // skin ombre (tissus, capsules 7-8) : genou → cheville (pivot du pied ; la capsule du tibia finit sous l'orteil)
+  const ep = p ? p.matrixWorld.elements : null;
+  t[o + 35] = ek[12];
+  t[o + 36] = ek[13];
+  t[o + 37] = ek[14];
+  t[o + 38] = ep ? ep[12] : c[o + 3];
+  t[o + 39] = ep ? ep[13] : c[o + 4];
+  t[o + 40] = ep ? ep[14] : c[o + 5];
+  t[o + 41] = 1;
 }
 
 // ===== PIEDS ======================================================================================================

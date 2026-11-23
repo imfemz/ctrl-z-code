@@ -4091,10 +4091,26 @@ export const AGENT = Object.freeze({ ECLAIREUR: 0, BASTION: 1, SHINOBI: 2 });
 export const AGENT_COUNT = 3;
 //#region skins
 // Skins des agents (tâche 3) : `base` = le modèle de l'agent, toujours disponible ; les autres se gagnent par un défi
-// (clé de récompense `skin:<agent>:<skin>` dans meta.unlocked). fichier : modèle 3D du skin (null tant qu'il n'existe pas).
+// (clé de récompense `skin:<agent>:<skin>` dans meta.unlocked). fichier : modèle 3D du skin (null : celui de l'agent) ;
+// lisere : couleur du liseré du portrait (pause, fiche, titre) ; les armes, la visée et l'anneau du dash gardent l'orange.
 export const SKIN_BASE = 'base';
 export const SKIN_NOM_BASE = 'Standard';
-export const SKINS = { eclaireur: [], bastion: [], shinobi: [{ key: 'ombre', name: "Agent de l'ombre", fichier: null }] };
+export const SKINS = { eclaireur: [], bastion: [], shinobi: [{ key: 'ombre', name: "Agent de l'ombre", fichier: 'agent-shinobi-ombre.glb', lisere: 0x9e1030 }] };
+/** Définition d'un skin (null pour `base`, un skin inconnu ou un agent inconnu). */
+export function skinDef(agentKey, skinKey) {
+  const l = Object.prototype.hasOwnProperty.call(SKINS, agentKey) ? SKINS[agentKey] : [];
+  return l.find((x) => x.key === skinKey) || null;
+}
+/** Fichier du modèle d'un skin (dans MODELES.dir) ; null : le skin n'a pas de modèle propre (celui de l'agent sert). */
+export function skinFichier(agentKey, skinKey) {
+  const d = skinDef(agentKey, skinKey);
+  return d && d.fichier ? d.fichier : null;
+}
+/** Couleur du liseré du portrait pour un skin (carmin de l'ombre) ; `defaut` si le skin n'en a pas. */
+export function skinLisere(agentKey, skinKey, defaut) {
+  const d = skinDef(agentKey, skinKey);
+  return d && d.lisere !== undefined ? d.lisere : defaut;
+}
 /** Clés des skins d'un agent, `base` d'abord (`['base']` pour un agent sans skin ou inconnu). */
 export function skinsDe(agentKey) {
   const l = Object.prototype.hasOwnProperty.call(SKINS, agentKey) ? SKINS[agentKey] : [];
@@ -7122,7 +7138,7 @@ export const SUCCES_RECOMPENSE = {
     'fusion:malware': 'Un robot infecté et en feu laisse un nuage toxique 3 s.',
     'fusion:restauration': 'Quand la Sauvegarde vous sauve, un coffre gratuit en fin de vague.',
     'fusion:essaim': 'À chaque impulsion du Condensateur, chaque drone tire une rafale.',
-    'skin:shinobi:ombre': 'Un look de prestige pour le Shinobi, visible dans une prochaine mise à jour.',
+    'skin:shinobi:ombre': 'Cornes, croix carmin et cape de l’ombre pour le Shinobi.',
   },
 };
 //#endregion e5:E-ui-1711
@@ -7403,8 +7419,7 @@ export const VITRINE = {
   // (outils/portraits_agents.mjs --cartes : 520 × 740, agent de la vitrine cadre fiche, lum-b5, posé sur le fond de l'écran
   // Agents comme dans grille-B2.png). cartes(agentKey, skinKey, { verrou }) : verrou = la silhouette de l'agent (vitrine
   // verrouillée) sur le même fond et le même voile, carte-<agent>-verrou.webp (cadenas et condition : dessinés par l'UI) ;
-  // un skin inconnu retombe sur « base » ; le skin « ombre » du Shinobi montre le Shinobi de base tant que son modèle
-  // n'existe pas. carte : dy[a] = décalage vertical (px de carte, négatif = vers le haut) de l'agent sur la carte, margeBas =
+  // un skin inconnu retombe sur « base » ; le skin « ombre » du Shinobi a son propre rendu. carte : dy[a] = décalage vertical (px de carte, négatif = vers le haut) de l'agent sur la carte, margeBas =
   // marge minimale (px) entre le pixel le plus bas de l'agent et le bord bas (l'outil refuse la carte sinon ; 56 px = le débord de l'image dans sa boîte (0,6 rem) + la parallaxe max (0,5 rem), soit ~35 px de carte à 2560, + ~20 px de marge visible).
   // grille (tâche 5) : le fond de la grille, adouci et assombri d'avance (outils/fonds_webp.py --grille, 640 × 360)
   fonds: { agents: 'assets/ui/fond-agents.webp', titre: 'assets/ui/fond-titre.webp', grille: 'assets/ui/fond-agents-grille.webp' },
@@ -7417,11 +7432,12 @@ export const VITRINE = {
   // Tâche 6 : vignettes des skins de la fiche (outils/portraits_agents.mjs --vignettes : l'agent de la vitrine, cadre fiche,
   // sur fond TRANSPARENT, recadré à largeur × hauteur = la zone image d'une vignette à 2560 × 1440, pieds à margeBas px du
   // bas) ; verrou : sa silhouette (skin verrouillé, ou agent verrouillé). Même repli que les cartes (skin inconnu → base ;
-  // « ombre » = le Shinobi de base tant que son modèle n'existe pas).
+  // « ombre » : son propre rendu).
   vignette: { largeur: 280, hauteur: 238, part: 0.86, margeBas: 8 },
   vignettes: (agentKey, skinKey, opts) => {
-    if (opts && opts.verrou) return `assets/ui/agents/vignette-${agentKey}-verrou.webp`;
     const sk = skinsDe(agentKey).includes(skinKey) ? skinKey : SKIN_BASE;
+    // verrou : la silhouette de l'agent ; un skin à modèle propre (ombre) a la sienne (cornes, cape), vignette-<agent>-<skin>-verrou.webp
+    if (opts && opts.verrou) return sk === SKIN_BASE ? `assets/ui/agents/vignette-${agentKey}-verrou.webp` : `assets/ui/agents/vignette-${agentKey}-${sk}-verrou.webp`;
     return `assets/ui/agents/vignette-${agentKey}-${sk}.webp`;
   },
   idles: ['assets/anims/vitrine-eclaireur.json', 'assets/anims/vitrine-bastion.json', 'assets/anims/vitrine-shinobi.json'],
@@ -7746,6 +7762,94 @@ export const TISSUS = {
       plan: { signe: 1, z: -0.06 },
     },
   ],
+};
+// Skin « Agent de l'ombre » (plan skin-ombre-3d, tâche 3, 23/11) — Femz : la cape « doit être ouverte mais pas rigide non
+// plus », le katana reste VISIBLE par-dessus. Jeu de tissus propre au skin, choisi par src/anim/tissus.js quand son adresse
+// porte « ombre » (tissus.js?ombre pour le héros, tissus.js?portrait-ombre pour le portrait et la vitrine) : le pan du dos
+// devient une longue CAPE gothique déchirée accrochée aux épaules (cape_epaule_g/d du .glb), le pan devant et la queue de
+// l'écharpe restent ceux du Shinobi, en carmin. Champs en plus de TISSUS (absents du Shinobi de base : rien n'y change) :
+//   couleur / lisereCouleur (par pièce) ; basCouleur, basPart : le bas de la pièce tourne au carmin sur la part basPart de
+//   sa longueur (pointes pleines) ; mat : aEmissive du corps de la pièce (le matériau peint garde 1 − mat de la couleur et
+//   coupe d'autant le liseré clair du look cel, le Fresnel et le spéculaire : noir mat, sans programme de plus ; 0 sur le
+//   carmin) ; plis (m) / plisOmbre : plis verticaux (une colonne sur deux avancée ou reculée, vallées assombries) ;
+//   encoche : profondeur des encoches entre pointes (part d'une rangée, 0,18 sinon) ; fentes / trous / accrocs :
+//   déchirures du maillage (cases, deux demi-cases, une demi-case non dessinées ; grille simulée entière) ;
+//   pointeDegrade (f) : chaque lambeau (pointe) est recoupé à f de sa longueur, le carmin n'en occupe que le bout ; accroche 'epaules' : rangée accrochée tendue d'une épaule à l'autre (cape_epaule_g/d,
+//   fermée au col) ; epouse (m) : au repos, chaque particule est posée au plus à epouse + marge du dos RÉEL du modèle
+//   posé au repos (surfaceDos, jambes comprises) — le haut épouse le dos, le bas s'en écarte selon `bas` ; galbe [haut,
+//   bas] (m) : les côtés reviennent vers l'avant (cape qui enveloppe, ouverte devant, lisible de profil) ; memoire
+//   (1/s²) : ressort vers cette forme de repos dans le repère de l'os, à l'arrêt seulement (adhérence de dosReel : nul
+//   dès dosReel.vitesse, revient en dosReel.tau) — la cape reste OUVERTE au repos ; memoireCourse (1/s²) : ce qu'il en
+//   reste en course (la cape flotte derrière sans se replier en lanière) ; adherence : gain de
+//   l'adhérence au dos (1 par défaut) ; etirementMax : aucune arête de structure ni de pointe plus longue que ce
+//   multiple de son repos (borne après les collisions de chaque sous-pas) ; devantKatana : la pièce passe ENTRE le dos et le katana (le katana par-dessus) ;
+//   jambesGarde (m) : autour des jambes, les capsules du config + marge + jambesGarde plutôt que l'arrière mesuré de la
+//   vraie jambe (la cape passe aussi sur leurs côtés et derrière le talon, la capsule du tibia finissant vers l'orteil).
+export const TISSUS_SKINS = {
+  ombre: {
+    ...TISSUS,
+    couleur: 0x1b1520, // tissu noir violacé (jamais noir pur) — palette du skin : coque #141318, sombre #09080C
+    degrade: 0, // retour de Femz (23/11) : la cape est NOIRE, aucun éclaircissement du bas
+    // m — saut d'accroche en une image au-delà duquel les tissus sont replacés : l'élan d'une fente du katana (≈ 1 m en
+    // une image) replaçait la cape au repos DANS la jambe avancée ; le pas de l'ombre (4,3 m) la replace toujours
+    teleport: 1.6,
+    lisere: { couleur: 0x9e1030, largeur: 0.028, gain: 1.0 }, // carmin profond du skin, jamais le rouge des ennemis
+    pieces: [
+      TISSUS.pieces[0], // pan devant : celui du Shinobi (liseré carmin du jeu)
+      {
+        nom: 'cape', os: 'buste', accroche: 'epaules', haut: [0, 1.66, -0.02], cote: [1, 0, 0], bas: [0, -1, -0.14], devantKatana: true, jambesGarde: 0.03,
+        // correction 2 (23/11, comparaison au concept) : haut INTACT (nappe noire plissée, ~60 % de la hauteur), bas en
+        // éventail de 12 longs lambeaux étroits et pointus jusqu'aux bottes, carmin sur leur dernier quart seulement
+        largeurHaut: 0.36, largeurBas: 1.4, longueur: 0.95, cols: 12, rows: 13, galbe: [0.05, 0.3], plis: 0.05, etirementMax: 1.3,
+        pointes: [0.62, 0.44, 0.58, 0.36, 0.66, 0.48, 0.6, 0.4, 0.64, 0.46, 0.56, 0.65],
+        // éventail : les lambeaux s'ouvrent vers l'extérieur (0,26 m aux bords), plus un léger désordre
+        decalagePointes: [0.012, -0.01, 0.008, -0.012, 0.01, -0.008, 0.012, -0.01, 0.008, -0.012, 0.01, -0.008].map((j, c) => (1 - (2 * c) / 11) * 0.26 + j),
+        encoche: 0.55, pointeDegrade: 0.74,
+        // déchirures : quelques petits accrocs (une demi-case) dans la nappe, aucune fente qui casse la silhouette
+        fentes: [], trous: [], accrocs: [[5, 3], [7, 8], [6, 5]],
+        raideur: 1, raideurCisaillement: 0.6, raideurFlexion: 0.25, raideurPointe: 1,
+        traineeNormale: 1.4, traineeTangente: 0.2, gravite: 9.8, souffle: 0.6, poidsPointes: 1.2, flottement: 1.5,
+        plan: { signe: 1, z: -0.1 }, epouse: 0.005, memoire: 80, memoireCourse: 12, adherence: 0.1,
+        couleur: 0x2a2331, lisereCouleur: 0x4a0a18, mat: 0.7, plisOmbre: 0.45, basCouleur: 0x9e1030, basPart: 0.04,
+      },
+      // pas de queue d'écharpe (correction 2) : sur le concept, l'écharpe n'est qu'un col enroulé (col_echarpe du .glb) ;
+      // la queue carmin pendait au milieu du dos, l'élément rouge le plus visible de la cape
+    ],
+  },
+};
+
+// Effets du skin « Agent de l'ombre » (tâche 4) : fumée noire fine aux 9 pointes les plus basses de la cape (flammes.js
+// ?ombre : 2e instance du système de particules, réglages `flammes` ci-dessous au lieu de ANIM.flammes) et sillage de
+// brume au sol (vfx/brume-ombre.js : pool fixe de disques). Rien à l'arrêt ; Graphismes « Basse » : brume coupée, fumée ÷ 2.
+// Lisibilité : opacités plafonnées, brume sous les télégraphes (ordre 0,9 < RENDER.decals.telegraph.order = 1).
+export const SKIN_FX = {
+  ombre: {
+    fumee: {
+      couleur: 0x2b2536, // gris-violet sombre : se lit sur la cape noire comme sur la carte verte
+      opaciteMax: 0.22, // opacité maximale d'une bouffée (flammes.opaciteFumee × 1,6 de sync)
+      debitCourse: 6, // bouffées par seconde et par pointe en course
+      multDash: 2, // × au dash
+      vitesseMin: 0.5, // m/s : en dessous, le héros est à l'arrêt (aucune fumée)
+      basse: 0.5, // part du débit en Graphismes « Basse »
+      ordre: 0.95, // renderOrder : juste sous les télégraphes (1)
+      rayonEmission: 0.04, // m — la bouffée naît à la pointe
+      poussee: 0.25, // m/s vers le haut
+      // réglages de flammes.js?ombre (mêmes noms que ANIM.flammes)
+      flammes: { cap: 160, ne: 9, hz: 60, heritage: 0.12, flottaison: 0, ralentiFumee: -0.35, turbulence: 2.2, echelle: 2.2, trainee: 1.6, vieFeu: 0.1, vieFumee: 1.4, tailleFeu: 0.1, tailleFumee: 0.34, grossitFumee: 2, opaciteFumee: 0.1375 },
+    },
+    brume: {
+      cap: 24, // disques du pool
+      periode: 0.08, // s entre deux disques
+      vitesseMin: 0.5, // m/s
+      rayon0: 0.5, // m à la naissance
+      rayon1: 1.0, // m à la fin de vie
+      vie: 1.3, // s (0,6 s au brief : 12,5 disques/s × 0,6 s = 7,5 < 10 ; 1,3 s en donne ~16 vivants, le pool de 24 reste large)
+      opaciteMax: 0.24,
+      ordre: 0.9, // renderOrder, sous RENDER.decals.telegraph.order (1)
+      y: 0.02, // m — au-dessus du sol (0,012), sous les zones du boss (0,03)
+      couleur: 0x0b0a0d,
+    },
+  },
 };
 //#endregion e5:I-tissus
 

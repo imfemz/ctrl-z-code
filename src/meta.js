@@ -226,10 +226,18 @@ export function skinDebloque(agentKey, skinKey) {
   return data.unlocked.indexOf('skin:' + agentKey + ':' + skinKey) >= 0;
 }
 
-/** Skin à porter : le choix gardé s'il est connu ET débloqué, sinon 'base'. */
-export function skinChoisi(agentKey) {
+/**
+ * Skin EFFECTIF d'un agent : le choix gardé s'il est connu ET débloqué, sinon 'base' (sauvegarde trafiquée, ancienne
+ * version, progression réinitialisée). SEUL endroit qui en décide : le modèle, le portrait et les effets passent par là.
+ */
+export function skinEffectif(agentKey) {
   const k = Object.prototype.hasOwnProperty.call(data.skins, agentKey) ? data.skins[agentKey] : SKIN_BASE;
   return skinsDe(agentKey).includes(k) && skinDebloque(agentKey, k) ? k : SKIN_BASE;
+}
+
+/** Skin à porter (nom historique de skinEffectif). */
+export function skinChoisi(agentKey) {
+  return skinEffectif(agentKey);
 }
 
 /** Choisit le skin d'un agent. Faux (rien ne change) si inconnu ou verrouillé ; vrai : gardé et écrit (hors combat). */

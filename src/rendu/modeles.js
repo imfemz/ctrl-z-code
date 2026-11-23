@@ -15,6 +15,7 @@
 // le shader) et boss-corps (squelette du boss, lu dans « complet » : le fichier entier).
 // Aucun appel dans un chemin chaud : init et arrivée des modèles seulement.
 import * as THREE from 'three';
+import { SKIN_BASE, skinFichier } from '../config.js';
 import { AGENTS, BOSS, ENEMIES, ENEMY, ENEMY_COUNT, MODELES, PLAYER, SHOP } from '../config.js';
 import { CHESTS } from '../config.js'; // types porteurs : modèles élites (17/11)
 import { chargerPieces } from '../anim/pieces.js';
@@ -50,26 +51,40 @@ const CUIT = { 'boss.glb': 'boss-cuit.glb' };
 const cuit = (f) => CUIT[f] || f;
 const baseDefaut = () => new URL('../../' + MODELES.dir, import.meta.url).href;
 
-/** § E5.K : fichier du modèle détaillé de l'agent a (heros.glb pour l'Éclaireur). */
-export function fichierAgent(a) {
+/** § E5.K : fichier du modèle détaillé de l'agent a (heros.glb pour l'Éclaireur) ; skin : celui du skin s'il en a un. */
+export function fichierAgent(a, skin = SKIN_BASE) {
   const A = AGENTS[a];
-  return (A && MODELES.agents[A.key]) || MODELES.heros;
+  const f = skin !== SKIN_BASE && A ? skinFichier(A.key, skin) : null;
+  return f || (A && MODELES.agents[A.key]) || MODELES.heros;
 }
 
 /**
  * § E5.K : modèle détaillé de l'agent a (mêmes options que le héros : textures = image des armes PARTAGÉE, lue une fois
- * pour tous, src/anim/pieces.js atlasArmes). Rejette si le fichier manque ou est illisible.
+ * pour tous, src/anim/pieces.js atlasArmes). Rejette si le fichier manque ou est illisible. Le skin lu est noté sur les
+ * données (`.skin`) : player les range par agent ET skin.
  */
-export function chargerAgent(a, base = baseDefaut()) {
-  return chargerPieces(base + cuit(fichierAgent(a)), { cible: hauteurs().heros, emissifMateriau: true, textures: true });
+export function chargerAgent(a, base = baseDefaut(), skin = SKIN_BASE) {
+  return chargerPieces(base + cuit(fichierAgent(a, skin)), { cible: hauteurs().heros, emissifMateriau: true, textures: true }).then((d) => {
+    d.skin = skin;
+    return d;
+  });
 }
 
-/** § E5.K : oublie le glTF de l'agent a (cache de glb.js) ; ses données de jeu sont libérées par player (dispose). */
-export function oublierAgent(a, base = baseDefaut()) {
-  oublierGltf(base + cuit(fichierAgent(a)));
+/** § E5.K : oublie le glTF de l'agent a (et de son skin) du cache de glb.js ; ses données de jeu sont libérées par player (dispose). */
+export function oublierAgent(a, base = baseDefaut(), skin = SKIN_BASE) {
+  oublierGltf(base + cuit(fichierAgent(a, skin)));
 }
 
-export async function charger(base = baseDefaut(), { agent = 0 } = {}) {
+const avertis = new Set();
+/** Un skin dont le modèle ne se charge pas : un seul avertissement par skin, le modèle de base le remplace. */
+export function avertirSkin(a, skin, e) {
+  const cle = a + ':' + skin;
+  if (avertis.has(cle)) return;
+  avertis.add(cle);
+  console.warn('Modèle du skin « ' + skin + ' » illisible, le modèle de base le remplace :', String((e && e.message) || e));
+}
+
+export async function charger(base = baseDefaut(), { agent = 0, skin = SKIN_BASE } = {}) {
   const t0 = performance.now();
   const H = hauteurs();
   const url = (f) => base + f;
@@ -97,7 +112,14 @@ export async function charger(base = baseDefaut(), { agent = 0 } = {}) {
   // corps ANIMÉ (étape « animations », § Z sexies) : tout le fichier, pièces de phase 2 comprises (src/anim/boss-corps.js)
   const complet = corps.then((c) => chargerPieces(url(cuit(MODELES.boss)), { echelle: c.echelle, emissifMateriau: true, textures: true }));
   // héros : le modèle détaillé de l'agent CHOISI seulement (§ E5.K) ; textures : armes de l'image partagée (uv + aTex)
-  const herosP = chargerAgent(choisi, base);
+  // un skin dont le modèle manque : le modèle de base le remplace (avertissement, skinEchoue relu par main.poserModeles)
+  let skinEchoue = null;
+  const herosP = chargerAgent(choisi, base, skin).catch((e) => {
+    if (skin === SKIN_BASE) throw e;
+    avertirSkin(choisi, skin, e);
+    skinEchoue = skin;
+    return chargerAgent(choisi, base);
+  });
   const [heros, marchand, c, ch, cp, ...rs] = await Promise.all([
     herosP,
     chargerPieces(url(MODELES.marchand), { cible: H.marchand, emissifMateriau: true }),
@@ -109,7 +131,7 @@ export async function charger(base = baseDefaut(), { agent = 0 } = {}) {
   rs.elites = await Promise.all(elitesP); // lu par enemies.setModeles (robots.elites[t])
   const agents = AGENTS.map((_, a) => (a === choisi ? heros : null));
   const fichiers = 2 + 1 + ENEMY_COUNT - 1;
-  return { heros, agents, agent: choisi, robots: rs, boss: { corps: c, chaud: ch, complet: cp }, marchand, ms: performance.now() - t0, fichiers };
+  return { heros, agents, agent: choisi, skinEchoue, robots: rs, boss: { corps: c, chaud: ch, complet: cp }, marchand, ms: performance.now() - t0, fichiers };
 }
 
 /**
